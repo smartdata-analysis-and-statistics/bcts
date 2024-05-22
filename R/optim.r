@@ -21,14 +21,17 @@
 #' @keywords internal
 
 uniroot <- function(f,
-                    power,
-                    lower = lower,
-                    upper = upper,
-                    step.power=step.power, step.up=step.up, pos.side=pos.side,
-                    maxiter = 100,
+                    beta,
+                    lower = 2,
+                    upper = 500,
+                    step.power= 6, step.up=TRUE, pos.side=FALSE,
+                    maxiter = 20,
                     ...) {
+
+  target.power <- 1 - beta
   iter <- 0
-  table.test <- data.frame()
+  result <- data.frame(n_0 = numeric(),
+                       power = numeric())
   if (!is.numeric(lower) || !is.numeric(upper) || lower >= upper)
     stop("lower < upper  is not fulfilled")
   if (lower == -Inf && step.up == TRUE) stop("lower cannot be -Inf when step.up=TRUE")
@@ -37,28 +40,29 @@ uniroot <- function(f,
     f.old <- f(lower,...)
     iter <- iter + 1
     sign <- 1
-    xold <- lower }
-  else{
-    f.old<-f(upper,...)
-    iter<-iter+1
-    sign<- -1
-    xold<-upper
+    xold <- lower
+    } else {
+    f.old <- f(upper,...)
+    iter <- iter + 1
+    sign <- -1
+    xold <- upper
   }
 
-  ever.switched<-FALSE
-  tried.extreme<-FALSE
-  while (step.power>-1){
+  ever.switched <- FALSE
+  tried.extreme <- FALSE
+  while (step.power > -1) {
 
-    if ((power-f.old$power)==0) break()
+    if ((target.power - f.old$power) == 0) break()
     if (iter >= maxiter) stop("reached maxiter without a solution")
     xnew <- xold + sign*(2^step.power)
-    if ((step.up & xnew< upper) || (!step.up & xnew> lower) ){
+    if ((step.up & xnew < upper) || (!step.up & xnew > lower)) {
       f.new <- f(xnew,...)
       iter <- iter + 1
-      if (!xold %in% c(table.test$n_control)) {
-        table.test <- rbind(table.test, f.old$n)}
-    }
-    else{
+      if (!xold %in% result$n_0) {
+        result <- result %>% add_row(data.frame(n_0 = f.old$n_0,
+                                                power = f.old$power))
+      }
+    } else {
 
       xnew <- xold
       f.new <- f.old
@@ -77,20 +81,20 @@ uniroot <- function(f,
         tried.extreme <- TRUE
         xswitch <- x.extreme
         f.switch <- f.extreme
-        if ((power-f.extreme$power)==0){
+        if ((target.power-f.extreme$power)==0){
           xold<-x.extreme
           f.old<-f.extreme
           break()
         }
 
-        if (((power-f.old$power)*(power-f.extreme$power))>=0){
+        if (((target.power-f.old$power)*(target.power-f.extreme$power))>=0){
           warning("f() at extremes not of opposite sign, try to set up upper level to a higher number")
-          return(list(iter=iter,f.root=f(upper,...),root=upper,table.test=table.test))
+          return(list(iter=iter,f.root=f(upper,...),root=upper,result = result))
         }
       }
     }
 
-    if ( ((power-f.old$power)*(power-f.new$power))<0){
+    if ( ((target.power-f.old$power)*(target.power-f.new$power))<0){
       sign<- sign*(-1)
       ever.switched<-TRUE
       xswitch<-xold
@@ -103,36 +107,61 @@ uniroot <- function(f,
     xold<- xnew
     f.old<-f.new
     if(step.power<0){
-      if(!xold%in%c(table.test$n_control)){
-        table.test<-rbind(table.test,f.old$n)}
+      if (!xold %in% result$n_0) {
+        result <- result %>% add_row(data.frame(n_0 = f.old$n_0,
+                                                power = f.old$power))
+        }
     }
   }
 
-  if ((power-f.old$power)==0){
+  if ((target.power-f.old$power)==0){
     root<-xold
     f.root<-f.old
-  } else if ((power-f.new$power)==0){
+  } else if ((target.power-f.new$power)==0){
     root<-xnew
     f.root<-f.new
 
-  } else if ((power-f.switch$power)==0){
+  } else if ((target.power-f.switch$power)==0){
     root <- xswitch
     f.root <- f.switch
   } else if (pos.side){
-    root <- if((power-f.new$power)>0) xnew else xswitch
-    f.root<-if((power-f.new$power)>0) f.new else f.switch
+    root <- if((target.power-f.new$power)>0) xnew else xswitch
+    f.root<-if((target.power-f.new$power)>0) f.new else f.switch
   } else {
-    root<-if((power-f.new$power)<0) xnew else xswitch
-    f.root<-if((power-f.new$power)<0) f.new else f.switch
+    root<-if((target.power-f.new$power)<0) xnew else xswitch
+    f.root<-if((target.power-f.new$power)<0) f.new else f.switch
   }
 
-  if(!root%in%c(table.test$n_control)){
-    table.test<-rbind(table.test,f.old$n)}
+  if (!root %in% result$n_0) {
+    result <- result %>% add_row(data.frame(n_0 = f.old$n_0,
+                                            power = f.old$power))
+  }
 
-  power <- c(root, f.root$power)
-  names(power) <- c("n_control","power")
+  out <- list(n = f.root$n,
+              N = f.root$N,
+              K = f.root$K,
+              beta = beta,
+              powers = f.root$powers,
+              power_type = f.root$power_type,
+              result = result)
+  class(out) <- "optss"
 
-  return(list(power = power,
-              table.test = table.test))
+  return(out)
+
+}
+
+print.optss <- function(x, ...) {
+
+  cat(paste("Design parameters for a 1 stage trial with ",
+            x$K, " active treatments\n\n", sep = ""))
+
+  if (x$power_type == "marginal") {
+    cat("Goal: Minimum marginal power under the least favourable configurations >=", (1 - x$beta), ".\n\n")
+  } else if (x$power_type == "disjunctive") {
+    cat("Goal: Reject at least one of the null hypotheses with probability >=", (1 - x$beta), ".\n\n")
+  }
+
+
+  cat(paste("Total sample size:", x$N, "\n"))
 
 }
