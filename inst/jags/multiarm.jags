@@ -1,0 +1,11 @@
+model{
+
+  mean_c ~ dnorm(mu_c, tau_c)
+  mu_c ~ dnorm(0, 1e-6)
+
+  for (i in 1:length(mean_t)) {
+    mean_t[i] ~ dnorm(mu_t[i], tau_t[i])
+    mu_t[i] ~ dnorm(0, 1e-6)
+    trteff[i] <- mu_t[i] - mu_c
+  }
+}

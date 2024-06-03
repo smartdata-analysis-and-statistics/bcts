@@ -134,7 +134,7 @@ uniroot <- function(f,
 
   if (!root %in% result$n_0) {
     result <- result %>% add_row(data.frame(n_0 = f.old$n_0,
-                                            power = f.old$power))
+                                            power = f.old$powers))
   }
 
   out <- list(n = f.root$n,
@@ -158,7 +158,7 @@ print.optss <- function(x, ...) {
   if (x$power_type == "marginal") {
     cat("Goal: Minimum marginal power under the least favourable configurations >=", (1 - x$beta), ".\n\n")
   } else if (x$power_type == "disjunctive") {
-    cat("Goal: Reject at least one of the null hypotheses with probability >=", (1 - x$beta), ".\n\n")
+    cat("Goal: Reject at least one of the", x$K, "null hypotheses with probability >=", (1 - x$beta), ".\n\n")
   }
 
 
