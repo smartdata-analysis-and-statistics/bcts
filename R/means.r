@@ -161,25 +161,32 @@ print.estsample <- function(x, ...) {
 
 }
 
-bpower_diff_means <- function(n_0, #planned initial sample size for the control group
-                              p_interim = 0.3, # The information fraction at which the interim analysis is carried out
+bpower_diff_means <- function(n_0_int = 16, #planned sample size for the control group at interim
+                              n_0_pln = 60, # Planned sample size for the control group
+                              n_0_max = 80, # Maximum sample size for the control group
                               mu_c = 0,
                               sd_c = 1,
-                              mu_t = c(0.4, 0.5), # expected effect sizes
-                              sd_t = c(1, 1), # expected SD
-                              gamma = 0.975, # Success threshold
+                              mu_t = c("Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), # Named vector with expected effect sizes
+                              sd_t = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), # expected SD
+                              gamma = 0.98, #  Level to declare success, usually 0.975 but needs to be increased because of dose selection
+                              th.fut = 0.2, ## Futility threshold for the predictive power calculated conditioned on the interim data
+                              th.eff = 0.9, ## Efficacy threshold for the predictive power calculated conditioned on the interim data
+                              th.prom = 0.5, ## Predictive power threshold that would trigger sample size increase
                               nsim = 1000,
                               num_chains = 4,
                               n.iter = 20000, # Number of MCMC iterations
                               n.adapt = 500,
                               perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
+                              progress.bar = "text", #  type of progress bar. Possible values are "text", "gui", and "none"
                               quiet = TRUE) {
   require(rjags)
 
   ntreat <- length(mu_t)
 
-  ## Calculate the interim sample size
-  n_0_interim <- ceiling(n_0 * p_interim)
+  # Check if all elements are equal
+  if (all(mu_t == mu_c) & !quiet) {
+    message("Evaluating the type-I error")
+  }
 
 
   # Parameters to monitor
@@ -192,11 +199,25 @@ bpower_diff_means <- function(n_0, #planned initial sample size for the control 
   # keep track of predictive power for each dose at interim
   pred_power_int <- matrix(nrow = nsim, ncol = ntreat)
 
+  # keep track of futility triggering at interim
+  fut.trig <- rep(FALSE, nsim)
+
   # Keep track of the best doses at interim
   best_dose <- rep(NA, nsim)
 
+  # Keep track of whether sample size is increased
+  inc.ss <- rep(FALSE, nsim)
+
   # Keep track of hypothesis test at final stage
   hypothesis_testing <- rep(NA, nsim)
+
+  # Keep track of the final sample size of control and selected treatment
+  n_final <- matrix(nrow = nsim, ncol = 2)
+  colnames(n_final) <- c("control", "selected arm")
+
+  if (progress.bar == "text") {
+    pb <- txtProgressBar(min = 0, max = nsim, initial = 0)
+  }
 
   ##############################################################################
   # Run simulation
@@ -204,20 +225,20 @@ bpower_diff_means <- function(n_0, #planned initial sample size for the control 
   for (i in 1:nsim) {
 
     # Simulate new data for the control group
-    control_data <- rnorm(n_0_interim, mu_c, sd_c)
+    control_data <- rnorm(n_0_int, mu_c, sd_c)
 
     # Simulate new data for the treatment groups
-    treatment_data <- matrix(nrow = n_0_interim, ncol = ntreat)
+    treatment_data <- matrix(nrow = n_0_int, ncol = ntreat)
     mean_t <- tau_t <- rep(NA, ntreat)
 
     for (treat in 1:ntreat) {
-      treatment_data[,treat] <- rnorm(n_0_interim, mu_t[treat], sd_t[treat])
+      treatment_data[,treat] <- rnorm(n_0_int, mu_t[treat], sd_t[treat])
       mean_t[treat] <- mean(treatment_data[,treat])
-      tau_t[treat] <- n_0_interim/var(treatment_data[,treat]) # 1/(SE(mean))**2
+      tau_t[treat] <- n_0_int/var(treatment_data[,treat]) # 1/(SE(mean))**2
     }
 
     jags_data <- list(mean_c = mean(control_data),
-                      tau_c = n_0_interim/var(control_data),
+                      tau_c = n_0_int/var(control_data),
                       mean_t = mean_t,
                       tau_t = tau_t)
 
@@ -226,7 +247,7 @@ bpower_diff_means <- function(n_0, #planned initial sample size for the control 
                                  data = jags_data,
                                  n.chains = num_chains,
                                  n.adapt = n.adapt,
-                                 quiet = quiet)
+                                 quiet = TRUE)
 
     ##Burnin stage
     update(jags_model_int, n.iter = ceiling(n.iter*perc_burnin), progress.bar = "none")
@@ -247,13 +268,28 @@ bpower_diff_means <- function(n_0, #planned initial sample size for the control 
     # Select dose with highest predictive power
     best_dose[i] <- order(pred_power_int[i,], decreasing = TRUE)[1]
 
-    n_0_fin <- n_0
+
+    if (max(pred_power_int[i,]) < th.fut) {
+      #Futility triggering: When the predictive powers for both arm
+      #at the interim are lower than 20%. In the simulations, this is
+      #non-binding, i.e. the trial continues as planned when futility is
+      #triggered.
+      fut.trig[i] <- TRUE
+      n_0_fin <- n_0_pln
+    } else if (max(pred_power_int[i,]) >= th.prom & max(pred_power_int[i,]) < th.eff) {
+      # Increase in sample size if the maximum of the predictive
+      # powers are between 50% and 90%
+      inc.ss[i] <- TRUE
+      n_0_fin <- n_0_max
+    } else {
+      n_0_fin <- n_0_pln
+    }
 
     ## Simulate the remaining control patients
-    control_data_fin <- c(control_data, rnorm(n_0_fin - n_0_interim, mu_c, sd_c))
+    control_data_fin <- c(control_data, rnorm(n_0_fin - n_0_int, mu_c, sd_c))
 
     # Simulate the remaining treated patients for the selected dose
-    treatment_data_fin <- c(treatment_data[,best_dose[i]],  rnorm(n_0_fin - n_0_interim, mu_t[best_dose[i]], sd_t[best_dose[i]]))
+    treatment_data_fin <- c(treatment_data[,best_dose[i]],  rnorm(n_0_fin - n_0_int, mu_t[best_dose[i]], sd_t[best_dose[i]]))
 
     jags_data_fin <- list(mean_c = mean(control_data_fin),
                           tau_c = n_0_fin/var(control_data_fin),
@@ -265,7 +301,7 @@ bpower_diff_means <- function(n_0, #planned initial sample size for the control 
                                  data = jags_data_fin,
                                  n.chains = num_chains,
                                  n.adapt = n.adapt,
-                                 quiet = quiet)
+                                 quiet = TRUE)
 
     ##Burnin stage
     update(jags_model_fin, n.iter = ceiling(n.iter*perc_burnin), progress.bar = "none")
@@ -279,8 +315,40 @@ bpower_diff_means <- function(n_0, #planned initial sample size for the control 
     psample_fin <- as.data.frame(do.call(rbind, fit_jags_fin))
 
     ##Hypothesis testing
-    hypothesis_testing[i] <- (quantile(psample_fin$trteff, 0.025) > 0)
+    hypothesis_testing[i] <- quantile(psample_fin$trteff, (1 - gamma)) > 0
+
+    # Save final sample size
+    n_final[i,] <- c(length(control_data_fin), length(treatment_data_fin))
+
+    if (progress.bar == "text") {
+      setTxtProgressBar(pb, i)
+    }
   }
+
+  if (progress.bar == "text") {
+    close(pb)
+  }
+
+  # Calculate the probability that a certain dose is selected at interim
+  P.sel <- table(best_dose)/nsim
+  names(P.sel) <- names(mu_t)
+
+  # Calculate average final sample size
+  N.final <- colMeans(n_final)
+
+
+
+
+  out <- list(mu = c("control" = mu_c, mu_t),
+              stdev = c("control" = sd_c, sd_t),
+              gamma = gamma,
+              power = mean(hypothesis_testing),
+              P.fut.trig = mean(fut.trig),
+              P.sel = P.sel,
+              P.inc.ss = mean(inc.ss),
+              N.final = N.final)
+
+
 
 
 
