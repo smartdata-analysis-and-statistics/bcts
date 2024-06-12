@@ -1,0 +1,16 @@
+model{
+  for (k in 1:n_arms) {
+    for (i in 1:n[k]) {
+      Y[i,k] ~ dnorm(mu[k], tau[k])
+    }
+  }
+
+  # Derive treatment effect for the observed data
+  # It is assumed that the reference treatment is mu[1]
+  for (j in 2:n_arms) {
+    for (ni in n_pln:n[j]) {
+      pred_trteff[ni, j] <- mean(Y[1:ni,j]) - mean(Y[1:ni,1])
+    }
+  }
+}
+

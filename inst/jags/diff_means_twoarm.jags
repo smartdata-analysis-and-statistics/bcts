@@ -1,0 +1,9 @@
+model{
+
+  mean_c ~ dnorm(mu_c, tau_c)
+  mu_c ~ dnorm(0, 1e-6)
+  mean_t ~ dnorm(mu_t, tau_t)
+  mu_t ~ dnorm(0, 1e-6)
+
+  trteff <- mu_t - mu_c
+}
