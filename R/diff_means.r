@@ -20,7 +20,7 @@ library(dplyr)
 #' @export
 #'
 #' @examples
-cp_diff_means <- function(n1, # Sample size for the control arm
+pow_diff_means <- function(n1, # Sample size for the control arm
                              mu1, # Active treatment
                              mu2, # Control treatment
                              margin = 0, #non-inferiority/superiority margin
@@ -254,9 +254,9 @@ print.estsample <- function(x, ...) {
 #' @export
 #'
 #' @examples
-bpower_adapt_diff_means <- function(n_int = 20, # 16
-                                    n_pln = 75, # NOte that one arm should be dropped
-                              n_max = 90, # 80
+bpower_adapt_diff_means <- function(n_int = 60, #20
+                                    n_pln = 150, #45 + 20, #
+                                    n_max = 180, #60 + 20, # 80
                               block_size = 6, # block size for randomization
                               mu_c = 0,
                               sd_c = 1,
@@ -268,6 +268,7 @@ bpower_adapt_diff_means <- function(n_int = 20, # 16
                               th.eff = 0.9, ##
                               th.prom = 0.5, ##
                               nsim = 1000, # no. of simulatoins at trial start
+                              nsim.ppos = 1000, # no. of simulations to assess PPOS
                               nsim_int = 100, # no.of simulations at interim
                               num_chains = 4,
                               n.iter = 5000, #
@@ -312,51 +313,18 @@ bpower_adapt_diff_means <- function(n_int = 20, # 16
                                   kappa = 1, alpha = 0.025)
 
 
-
-
-  ##############################################################################
-  # Simulation results to monitor
-  ##############################################################################
-
-  # Keep track of success at interim
-  sig_interim <- matrix(nrow = nsim, ncol = n_treat)
-  colnames(sig_interim) <-  trt_names[-1]
-
-  # Keep track of PPoS at planned sample size
-  PPoS_pln <- matrix(nrow = nsim, ncol = n_treat)
-  colnames(PPoS_pln) <- trt_names[-1]
-
-  # keep track of predictive power for each dose at interim
-  pred_power_int <- matrix(nrow = nsim, ncol = n_treat)
-  colnames(pred_power_int) <- trt_names[-1]
-
-  # keep track of Potential scale reduction factor at interim
-  psrf_est_int <- psrf_uci_int <- matrix(nrow = nsim, ncol = (1 + 2*n_treat))
-  colnames(psrf_est_int) <- colnames(psrf_uci_int) <- c("mu_c",
-                              paste0("mu_t[",seq(n_treat), "]"),
-                              paste0("trteff[",seq(n_treat), "]"))
-
   # Keep track of observed parameter estimates at interim
-  param_mean_int <- matrix(nrow = nsim, ncol = (1 + 2*n_treat))
-  colnames(param_mean_int) <- colnames(psrf_est_int)
-
-  # keep track of futility triggering at interim
-  fut.trig <- rep(FALSE, nsim)
-
-  # Keep track of the selected dose at interim
-  sel_dose <- rep(NA, nsim)
-
-  # Keep track of whether sample size is increased
-  inc.ss <- rep(FALSE, nsim)
+  results_interim <- NULL
+  results_per_trial <- data.frame(sim = seq(nsim),
+                                  n_int = NA,
+                                  n_pln = NA,
+                                  n_max = NA,
+                                  fut.trig = FALSE,
+                                  inc.ss = FALSE)
 
 
-
-  # Keep track of hypothesis test at final stage
-  hypothesis_testing <- rep(NA, nsim)
-
-  # Keep track of the final sample size of control and selected treatment
-  n_final <- matrix(nrow = nsim, ncol = 2)
-  colnames(n_final) <- c("control", "selected arm")
+  # Keep track of the final sample size per arm
+  n_final <- rep(n_pln, nsim)
 
   if (progress.bar == "text") {
     pb <- txtProgressBar(min = 0, max = nsim, initial = 0)
@@ -372,56 +340,45 @@ bpower_adapt_diff_means <- function(n_int = 20, # 16
   ##############################################################################
   for (i in 1:nsim) {
     # Simulate all trial data
-    dat_fin <- generate_trial_data(N = n_max * n_arms,
+    dat_int <- generate_trial_data(N = n_int,
                                block_size = block_size,
                                mean = c(mu_c, mu_t),
                                sd = c(sd_c, sd_t),
                                trtnames = trt_names)
 
-    # Set observations after interim to NA
-    dat_fin <- dat_fin %>% mutate(Y = ifelse(Participant > n_int*n_arms, NA, Y))
-
-    # Select the interim data
-    dat_int <- dat_fin %>% filter(Participant <= n_int*n_arms)
+    results_per_trial$n_int[i] <- nrow(dat_int)
+    results_per_trial$n_pln[i] <- n_pln
+    results_per_trial$n_max[i] <- n_max
 
     # Assess success at the interim stage
-    pos_int <- pos_interim_analysis(data = dat_int,
-                                    gamma = gamma,
-                                    num_chains = num_chains,
-                                    n.adapt = n.adapt, n.iter = n.iter,
-                                    perc_burnin = perc_burnin)
-    #sig_interim[i,names(pos_int)] <- pos_int
-    ppos <- est_ppos(result = pos_int, n_pln = n_pln, n_max = n_max)
+    result_int <- eval_superiority(data = dat_int,
+                                   margin = 0,
+                                   gamma = gamma,
+                                   num_chains = num_chains,
+                                   n.adapt = n.adapt, n.iter = n.iter,
+                                   perc_burnin = perc_burnin)
 
-    # Is the planned sample size sufficient?
-    for (k in 2:n_arms) {
-      PPoS_pln[i, k - 1] <- ppos %>% filter(N == n_pln & trt == k) %>% pull(ppos)
-    }
+    # Evaluate posterior predictive power for all doses
+    n_post_per_arm <- (n_pln - n_int)/2
+    ppos <- eval_ppos(data_interim = dat_int,
+                      n_post_interim = n_post_per_arm * n_treat,
+                      mu_c = mu_c, mu_t = mu_t, sd_c = sd_c, sd_t = sd_t,
+                      trt_names = trt_names, gamma = gamma,
+                      num_chains = num_chains, n.adapt = n.adapt,
+                      n.iter = n.iter, perc_burnin = perc_burnin,
+                      nsim = nsim.ppos)
 
-    if (max(PPoS_pln[i,]) < th.fut) {
-      #Futility triggering: When the predictive powers for both arm
-      #at the interim are lower than 20%. In the simulations, this is
-      #non-binding, i.e. the trial continues as planned when futility is
-      #triggered.
-      fut.trig[i] <- TRUE
-      n_fin <- n_pln
-    } else if (max(PPoS_pln[i,]) >= th.prom & max(PPoS_pln[i,]) < th.eff) {
-      # Increase in sample size if the maximum of the predictive
-      # powers are between 50% and 90%
-      inc.ss[i] <- TRUE
+    # Store the interim results
+    out_int <- cbind(sim = i, result_int$est %>% merge(ppos, by = "Treatment"))
 
-      # Calculate the PPoS for each possible sample size increase
-
-      # Determine which sample size increase is needed
-
-      ### Different increase based on predictive power
-      ### WE could estimate n_0_max to reach 80% power if we assume the observed treatment effect is true
-
-      ## eg. posterior distr of mu; prior = expection (mu =0.5, ), likelihood = sample mean + SE
-      ## Use posterior as new expectation of mu
-    }
+    # Futility of individual treatments
+    out_int <- out_int %>% mutate(fut.trt = ifelse(ppos.est < th.fut, TRUE, FALSE))
+    results_per_trial$fut.trig[i] <- all(!out_int$fut.trt) # Futility for all treatments?
 
 
+    results_interim <- results_interim %>% add_row(out_int)
+
+    # by default, the final sample size is the planned sample size
 
 
 
@@ -436,12 +393,19 @@ bpower_adapt_diff_means <- function(n_int = 20, # 16
     close(pb)
   }
 
-  # Predictive power at interim
-  colMeans(PPoS_pln)
+
+
+
+
 
   # Futility triggering
   mean(fut.trig)
 
+  # Inc ss
+  mean(inc.ss)
+
+  # Final sample size
+  mean(2*n_final + n_int)
 
 
 
@@ -488,7 +452,27 @@ bpower_adapt_diff_means <- function(n_int = 20, # 16
 
 }
 
-pos_interim_analysis <- function(data, gamma = 0.975, num_chains, n.adapt, n.iter, perc_burnin) {
+#' Evaluate superiority the trial data
+#'
+#' @param data Trial data
+#' @param margin Superiority margin (default: 0)
+#' @param gamma Level to declare success (default: 0.975)
+#' @param num_chains
+#' @param n.adapt
+#' @param n.iter
+#' @param perc_burnin
+#'
+#' @description
+#' Superiority is established if Pr(mean(treat)-mean(control)>margin) > gamma
+#'
+#'
+#' @return
+#' @export
+#'
+#' @examples
+eval_superiority <- function(data,
+                             margin = 0,
+                             gamma = 0.975, num_chains, n.adapt, n.iter, perc_burnin) {
 
   n_arms <- length(unique(data$trt))
   n_treat <- n_arms - 1
@@ -499,15 +483,12 @@ pos_interim_analysis <- function(data, gamma = 0.975, num_chains, n.adapt, n.ite
               n = n(),
               mean = mean(Y),
               var = var(Y),
-              tau = n/var(Y))
+              tau_k = n/var(Y))
 
   jags_data <- list(mean_c = ad_int %>% filter(Treatment == "Control") %>% pull(mean),
-                    tau_c = ad_int %>% filter(Treatment == "Control") %>% pull(tau),
+                    tau_c = ad_int %>% filter(Treatment == "Control") %>% pull(tau_k),
                     mean_t = ad_int %>% filter(Treatment != "Control") %>% pull(mean),
-                    tau_t = ad_int %>% filter(Treatment != "Control") %>% pull(tau))
-
-  # Parameters to monitor
-  params <- c("trteff")
+                    tau_t = ad_int %>% filter(Treatment != "Control") %>% pull(tau_k))
 
   # Analyse the interim data
   jags_model_int <- jags.model(file = file.path("./inst/jags/diff_means_multiarm.jags"),
@@ -520,33 +501,41 @@ pos_interim_analysis <- function(data, gamma = 0.975, num_chains, n.adapt, n.ite
   update(jags_model_int, n.iter = ceiling(n.iter*perc_burnin), progress.bar = "none")
 
   ##Sampling after burnin
-  fit_jags_int <- coda.samples(jags_model_int, params,
+  fit_jags_int <- coda.samples(jags_model_int, variable.names =  c("trteff"),
                                n.iter = floor(n.iter*(1 - perc_burnin)),
                                progress.bar = "none")
-
-  ## Derive potential scale reduction factor
-  gd_int <- gelman.diag(fit_jags_int, multivariate = F)
-  psrf.est <-  gd_int$psrf[,"Point est."] # Point estimate
-  psrf.uci <-  gd_int$psrf[,"Upper C.I."] # Upper C.I.
 
   ## Derive posterior distributions at interim
   psample_int <- as.data.frame(do.call(rbind, fit_jags_int))
 
   trt_est <- data.frame("Treatment" = character(),
                         "trt" = numeric(),
+                        "n_c" = numeric(),
+                        "n_t" = numeric(),
                         "est_lower" = numeric(),
                         "est" = numeric(),
                         "est_upper"  = numeric(),
+                        "est_se" = numeric(), # Standard error of the mean
+                        "z_test" = numeric(),
+                        "I_k"= numeric(), # Information level
                         "success" = logical())
 
   for (treat in 1:n_treat) {
     trteff_pos <- psample_int %>% pull(paste0("trteff[", treat, "]"))
+    trt_id <- (ad_int %>% filter(Treatment != "Control") %>% pull(trt))[treat]
+    sigmasq_t <- ad_int %>% filter(trt == trt_id) %>% pull(var)
+    n_t <- ad_int %>% filter(trt == trt_id) %>% pull(n)
 
     trt_est <- trt_est %>% add_row(data.frame("Treatment" = (ad_int %>% filter(Treatment != "Control") %>% pull(Treatment))[treat],
-                                              "trt" = (ad_int %>% filter(Treatment != "Control") %>% pull(trt))[treat],
+                                              "trt" = trt_id,
+                                              "n_c" = ad_int %>% filter(trt == 1) %>% pull(n),
+                                              "n_t" = ad_int %>% filter(trt == trt_id) %>% pull(n),
                                               "est_lower" = quantile(trteff_pos, 0.025),
                                               "est" = mean(trteff_pos),
                                               "est_upper" = quantile(trteff_pos, 0.975),
+                                              "est_se" = sd(trteff_pos),
+                                              "z_test" = mean(trteff_pos)/sd(trteff_pos),
+                                              "I_k" = 1/var(trteff_pos), # Should be similar to 1/((sigmasq_c/n_c)+(sigmasq_t/n_t))
                                               "success" = quantile(trteff_pos, (1 - gamma)) > 0))
   }
 
@@ -557,35 +546,53 @@ pos_interim_analysis <- function(data, gamma = 0.975, num_chains, n.adapt, n.ite
   out <- list(data = ad_int, est = trt_est)
 
   return(out)
-
 }
 
-est_ppos <- function(result, n_pln, n_max) {
+eval_ppos <- function(data_interim, n_post_interim, mu_c, mu_t, sd_c, sd_t,
+                             trt_names, gamma, num_chains, n.adapt, n.iter, perc_burnin,
+                             nsim = 1000) {
+  # Keep track of observed parameter estimates at interim
+  results_final <- data.frame(sim = numeric(),
+                              Treatment = character(),
+                              trt = numeric(),
+                              n_c = numeric(),
+                              n_t = numeric(),
+                              est_025 = numeric(),
+                              est = numeric(),
+                              est_975 = numeric(),
+                              est_se = numeric(),
+                              z_test = numeric(),
+                              I_k = numeric(),
+                              success = logical())
 
-  ppos <- data.frame(N = numeric(), trt = numeric(), ppos = numeric())
+  for (j in seq(nsim)) {
+    ## Add remaining data and calculate success
+    # Note that we simulate data for all arms, so n_pln needs to be adjusted
+    dat_post_int <- generate_trial_data(N = n_post_interim,
+                                        block_size = block_size,
+                                        mean = c(mu_c, mu_t),
+                                        sd = c(sd_c, sd_t),
+                                        trtnames = trt_names)
+    dat_fin <- rbind(data_interim, dat_post_int)
 
-  n_arms <- nrow(result$data)
-  n_int <- unique(result$data$n)
-
-  # Assess success at trial end for all possible sample sizes
-  for (treat in 2:n_arms) {
-    for (ni in n_pln:n_max) {
-      # Calculate pooled SD
-      var_c <- result$data$var[1]
-      var_t <- result$data$var[treat]
-      n_c <-  result$data$n[1]
-      n_t <-  result$data$n[treat]
-      delta <- result$est %>% filter(trt == treat) %>% pull(est)
-      sigma <- sqrt(((n_c - 1)* var_c + (n_t-1) * var_t)/(n_c + n_t - 2))
-
-      ppos <- ppos %>% add_row(data.frame(N = ni,
-                                          trt = treat,
-                                          ppos = pnorm(1/(2*sigma)*sqrt(2*n_int/(2*ni-2*n_int))*(delta*sqrt(2*ni)-2*sigma*gamma))))
-    }
+    # Assess success at the final stage
+    result_fin <- eval_superiority(data = dat_fin,
+                                   margin = 0,
+                                   gamma = gamma,
+                                   num_chains = num_chains,
+                                   n.adapt = n.adapt, n.iter = n.iter,
+                                   perc_burnin = perc_burnin)
+    results_final <- results_final %>% add_row(cbind(sim = j, result_fin$est))
   }
+
+  ppos <- results_final %>% group_by(Treatment) %>%
+    summarize(ppos.est = mean(success),
+              ppos.se = sqrt(ppos.est*(1 - ppos.est)/n()))
 
   return(ppos)
 }
+
+
 
 
 # Not used
@@ -726,45 +733,6 @@ create_block <- function(block_size, treatment_groups) {
 }
 
 
-calc_cp <- function(mu_c, mu_t, sd_c, sd_t, margin = 0,
-                       n_int_c, n_pln_c, n_max_c,
-                       kappa, alpha) {
-  power_trial_start <- data.frame(matrix(NA, nrow = ntreat, ncol = 3))
-  colnames(power_trial_start) <- c("N_int", "N_pln", "N_max")
-  rownames(power_trial_start) <- names(mu_t)
-
-  for (treat in seq(mu_t)) {
-    power_trial_start[treat, "N_int"] <- cp_diff_means(n1 = n_int_c, # Sample size for the control arm
-                                                        mu1 = mu_t[treat],
-                                                        mu2 = mu_c,
-                                                        margin = margin, #non-inferiority/superiority margin
-                                                        sd1 = sd_t[treat],
-                                                        sd2 = sd_c,
-                                                        kappa = kappa, # allocation ratio for the active treatment
-                                                        alpha = alpha,
-                                                        alternative = "superiority")$power
-    power_trial_start[treat, "N_pln"] <- cp_diff_means(n1 = n_pln_c, # Sample size for the control arm
-                                                        mu1 = mu_t[treat],
-                                                        mu2 = mu_c,
-                                                        margin = margin, #non-inferiority/superiority margin
-                                                        sd1 = sd_t[treat],
-                                                        sd2 = sd_c,
-                                                        kappa = kappa, # allocation ratio for the active treatment
-                                                        alpha = alpha,
-                                                        alternative = "superiority")$power
-    power_trial_start[treat, "N_max"] <- cp_diff_means(n1 = n_max_c, # Sample size for the control arm
-                                                        mu1 = mu_t[treat],
-                                                        mu2 = mu_c,
-                                                        margin = margin, #non-inferiority/superiority margin
-                                                        sd1 = sd_t[treat],
-                                                        sd2 = sd_c,
-                                                        kappa = kappa, # allocation ratio for the active treatment
-                                                        alpha = alpha,
-                                                        alternative = "superiority")$power
-
-  }
-  power_trial_start
-}
 
 bpower_diff_means <- function(n_c,
                               n_t,
