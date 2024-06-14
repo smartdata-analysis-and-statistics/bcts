@@ -207,20 +207,6 @@ n_diff_means <- function(mu, sd, delta, alpha, beta, power_type, adjust) {
           beta = beta)
 }
 
-print.estsample <- function(x, ...) {
-
-  cat(paste("Design parameters for a 1 stage trial with ",
-            x$K, " active treatments\n\n", sep = ""))
-
-  cat(paste("Total sample size:", x$N, "\n"))
-
-
-  if (x$correction == "bonferroni") {
-    descrip.gamma <- paste0("The maximum probability of incorrectly rejecting at least one of the ", x$K, " null hypotheses is at most ", x$alpha, ".")
-  }
-  cat(descrip.gamma)
-
-}
 
 #' Title
 #'
@@ -238,6 +224,7 @@ print.estsample <- function(x, ...) {
 #' @param th.eff Efficacy threshold for the predictive power calculated conditioned on the interim data
 #' @param th.prom Predictive power threshold that would trigger sample size increase
 #' @param nsim Number of trials to simulate (default: 1000)
+#' @param nsim.ppos  Number of simulations to assess PPOS (set to 0 to use approximation)
 #' @param num_chains Number of MCMC chains
 #' @param n.iter Number of MCMC iterations for estimation
 #' @param n.adapt Number of MCMC iterations for adaptation
@@ -254,9 +241,16 @@ print.estsample <- function(x, ...) {
 #' @export
 #'
 #' @examples
-bpower_adapt_diff_means <- function(n_int = 60, #20
-                                    n_pln = 150, #45 + 20, #
-                                    n_max = 180, #60 + 20, # 80
+#' \dontrun{
+#' mu_t = c("Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5)
+#' sd_t = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1)
+#'
+#' eval_power(n_int = 60, n_pln = 150, n_max = 180, block_size = 6,
+#'            mu_c = 0, sd_c = 1, mu_t = mu_t, sd_t = sd_t, gamma = 0.98, nsim.ppos = 0)
+#' }
+eval_power <- function(n_int = 60, #20
+                             n_pln = 150, #45 + 20, #
+                             n_max = 180, #60 + 20, # 80
                               block_size = 6, # block size for randomization
                               mu_c = 0,
                               sd_c = 1,
@@ -268,7 +262,7 @@ bpower_adapt_diff_means <- function(n_int = 60, #20
                               th.eff = 0.9, ##
                               th.prom = 0.5, ##
                               nsim = 1000, # no. of simulatoins at trial start
-                              nsim.ppos = 1000, # no. of simulations to assess PPOS
+                              nsim.ppos = 0, # no. of simulations to assess PPOS
                               nsim_int = 100, # no.of simulations at interim
                               num_chains = 4,
                               n.iter = 5000, #
@@ -305,16 +299,29 @@ bpower_adapt_diff_means <- function(n_int = 60, #20
   names(mu) <- names(sigma) <- trt_names
 
 
-  power_trial_start <- calc_cp(mu_c = mu_c, mu_t = mu_t,
-                                  sd_c = sd_c, sd_t = sd_t, margin = 0,
-                                  n_int_c = n_int,
-                                  n_pln_c = n_pln,
-                                  n_max_c = n_max,
-                                  kappa = 1, alpha = 0.025)
-
-
   # Keep track of observed parameter estimates at interim
-  results_interim <- NULL
+  results_interim <- tibble(
+    sim = integer(),
+    Treatment = character(),
+    trt = integer(),
+    n_c = integer(),
+    n_t = integer(),
+    est_lower = double(),
+    est = double(),
+    est_upper = double(),
+    est_se = double(),
+    z_test = double(),
+    I_k = double(),
+    success = logical(),
+    ppos.est = numeric(),
+    N_fin = numeric(),
+    fut.trt = logical()
+  )
+
+  # Assign the dynamic column names
+  names(results_interim)[names(results_interim) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
+  names(results_interim)[names(results_interim) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
+
   results_per_trial <- data.frame(sim = seq(nsim),
                                   n_int = NA,
                                   n_pln = NA,
@@ -358,22 +365,33 @@ bpower_adapt_diff_means <- function(n_int = 60, #20
                                    n.adapt = n.adapt, n.iter = n.iter,
                                    perc_burnin = perc_burnin)
 
-    # Evaluate posterior predictive power for all doses
-    n_post_per_arm <- (n_pln - n_int)/2
-    ppos <- eval_ppos(data_interim = dat_int,
-                      n_post_interim = n_post_per_arm * n_treat,
-                      mu_c = mu_c, mu_t = mu_t, sd_c = sd_c, sd_t = sd_t,
-                      trt_names = trt_names, gamma = gamma,
-                      num_chains = num_chains, n.adapt = n.adapt,
-                      n.iter = n.iter, perc_burnin = perc_burnin,
-                      nsim = nsim.ppos)
+    # Evaluate PPOS
+    dat_post_int <- generate_trial_data(N = n_post_interim,
+                                        block_size = block_size,
+                                        mean = c(mu_c, mu_t),
+                                        sd = c(sd_c, sd_t),
+                                        trtnames = trt_names) %>% mutate(Y = NA)
+
+    result_fin <- eval_superiority(rbind(dat_int, dat_post_int), margin = 0, gamma = gamma, num_chains = num_chains,
+                     n.adapt = n.adapt, n.iter = n.iter, perc_burnin = perc_burnin)
+
+    # Evaluate PPOS freq
+    # Calculate pooled SD
+    sigma <- sqrt(((20 - 1) * 1.10689 + (20 - 1) * 1.106016)/(40 - 2))
+
+    ppos.seq1 <- 1/(2*sigma)
+    ppos.seq2 <- sqrt(40/(130-40))
+    ppos.seq3 <- (0.55950954*sqrt(130))-(2*sigma*qnorm(gamma))
+    pnorm(ppos.seq1*ppos.seq2*ppos.seq3)
+
+
 
     # Store the interim results
-    out_int <- cbind(sim = i, result_int$est %>% merge(ppos, by = "Treatment"))
+    out_int <- cbind(sim = i, result_int$est %>% merge(ppos %>% select(Treatment, N_fin, ppos.est), by = "Treatment"))
 
     # Futility of individual treatments
     out_int <- out_int %>% mutate(fut.trt = ifelse(ppos.est < th.fut, TRUE, FALSE))
-    results_per_trial$fut.trig[i] <- all(!out_int$fut.trt) # Futility for all treatments?
+    results_per_trial$fut.trig[i] <- all(out_int$fut.trt) # Futility for all treatments?
 
 
     results_interim <- results_interim %>% add_row(out_int)
@@ -452,7 +470,7 @@ bpower_adapt_diff_means <- function(n_int = 60, #20
 
 }
 
-#' Evaluate superiority the trial data
+#' Evaluate the posterior probability of treatment superiority
 #'
 #' @param data Trial data
 #' @param margin Superiority margin (default: 0)
@@ -474,9 +492,6 @@ eval_superiority <- function(data,
                              margin = 0,
                              gamma = 0.975, num_chains, n.adapt, n.iter, perc_burnin) {
 
-  n_arms <- length(unique(data$trt))
-  n_treat <- n_arms - 1
-
   # Derive summary statistics at interim
   ad_int <- data  %>% group_by(Treatment) %>%
     summarize(trt = as.numeric(first(trt)),
@@ -485,13 +500,31 @@ eval_superiority <- function(data,
               var = var(Y),
               tau_k = n/var(Y))
 
-  jags_data <- list(mean_c = ad_int %>% filter(Treatment == "Control") %>% pull(mean),
-                    tau_c = ad_int %>% filter(Treatment == "Control") %>% pull(tau_k),
-                    mean_t = ad_int %>% filter(Treatment != "Control") %>% pull(mean),
-                    tau_t = ad_int %>% filter(Treatment != "Control") %>% pull(tau_k))
+  # Get the maximum value of 'n'
+  max_n <- max(ad_int$n)
+
+  # Get the number of rows in 'ad_int'
+  n_arms <- nrow(ad_int)
+
+  # Create an empty dataframe 'Y' with the specified dimensions
+  Y <- as.data.frame(matrix(NA, nrow = max_n, ncol = n_arms))
+
+  # Assign column names based on the rows of 'ad_int' for clarity
+  colnames(Y) <- ad_int$Treatment
+
+  # Fill 'Y' with values from 'dat_int'
+  for (treatment in levels(data$Treatment)) {
+    treatment_data <- data %>% filter(Treatment == treatment)
+    Y[1:nrow(treatment_data), treatment] <- treatment_data$Y
+  }
+
+  jags_data <- list(Y = Y,
+                    n = ad_int %>% pull(n),
+                    n_arms = n_arms,
+                    z_alpha = qnorm(gamma))
 
   # Analyse the interim data
-  jags_model_int <- jags.model(file = file.path("./inst/jags/diff_means_multiarm.jags"),
+  jags_model_int <- jags.model(file = file.path("./inst/jags/eval_superiority_diff_means.jags"),
                                data = jags_data,
                                n.chains = num_chains,
                                n.adapt = n.adapt,
@@ -501,56 +534,66 @@ eval_superiority <- function(data,
   update(jags_model_int, n.iter = ceiling(n.iter*perc_burnin), progress.bar = "none")
 
   ##Sampling after burnin
-  fit_jags_int <- coda.samples(jags_model_int, variable.names =  c("trteff"),
+  fit_jags_int <- coda.samples(jags_model_int, variable.names =  c("trteff", "obs_diff", "R", "R_pred", "mu", "sigma"),
                                n.iter = floor(n.iter*(1 - perc_burnin)),
                                progress.bar = "none")
 
   ## Derive posterior distributions at interim
   psample_int <- as.data.frame(do.call(rbind, fit_jags_int))
 
+
+
   trt_est <- data.frame("Treatment" = character(),
                         "trt" = numeric(),
-                        "n_c" = numeric(),
-                        "n_t" = numeric(),
+                        "n" = numeric(),
                         "est_lower" = numeric(),
                         "est" = numeric(),
                         "est_upper"  = numeric(),
                         "est_se" = numeric(), # Standard error of the mean
                         "z_test" = numeric(),
-                        "I_k"= numeric(), # Information level
-                        "success" = logical())
+                        "I_k" = numeric(), # Information level
+                        "pos" = numeric(),# Success based on parameter means (i.e., POS)
+                        "ppos" = numeric())  # Trial success based on observed data (i.e.,)
 
-  for (treat in 1:n_treat) {
-    trteff_pos <- psample_int %>% pull(paste0("trteff[", treat, "]"))
-    trt_id <- (ad_int %>% filter(Treatment != "Control") %>% pull(trt))[treat]
-    sigmasq_t <- ad_int %>% filter(trt == trt_id) %>% pull(var)
-    n_t <- ad_int %>% filter(trt == trt_id) %>% pull(n)
+  for (treat in 2:n_arms) {
+    mudiff <- psample_int %>% pull(paste0("trteff[", treat, "]"))
+    R <- psample_int %>% pull(paste0("R[", treat, "]"))
+    R_PPOS <- psample_int %>% pull(paste0("R_pred[", treat, "]"))
+    trtc <- (ad_int %>% filter(trt == treat) %>% pull(Treatment))
+    trtn <- (ad_int %>% filter(trt == treat) %>% pull(trt))
+    n_c <- ad_int %>% filter(trt == 1) %>% pull(n)
+    n_t <- ad_int %>% filter(trt == trtn) %>% pull(n)
 
-    trt_est <- trt_est %>% add_row(data.frame("Treatment" = (ad_int %>% filter(Treatment != "Control") %>% pull(Treatment))[treat],
-                                              "trt" = trt_id,
-                                              "n_c" = ad_int %>% filter(trt == 1) %>% pull(n),
-                                              "n_t" = ad_int %>% filter(trt == trt_id) %>% pull(n),
-                                              "est_lower" = quantile(trteff_pos, 0.025),
-                                              "est" = mean(trteff_pos),
-                                              "est_upper" = quantile(trteff_pos, 0.975),
-                                              "est_se" = sd(trteff_pos),
-                                              "z_test" = mean(trteff_pos)/sd(trteff_pos),
-                                              "I_k" = 1/var(trteff_pos), # Should be similar to 1/((sigmasq_c/n_c)+(sigmasq_t/n_t))
-                                              "success" = quantile(trteff_pos, (1 - gamma)) > 0))
+
+    trt_est <- trt_est %>% add_row(data.frame("Treatment" = trtc,
+                                              "trt" = trtn,
+                                              "n" = n_c + n_t,
+                                              "est_lower" = quantile(mudiff, 0.025),
+                                              "est" = mean(mudiff),
+                                              "est_upper" = quantile(mudiff, 0.975),
+                                              "est_se" = sd(mudiff),
+                                              "z_test" = mean(mudiff)/sd(mudiff),
+                                              "I_k" = 1/var(mudiff), # Should be similar to 1/((sigmasq_c/n_c)+(sigmasq_t/n_t))
+                                              "pos" = mean(R), #quantile(mudiff, (1 - gamma)) > 0,
+                                              "ppos" = mean(R_PPOS)))
   }
 
   # Assign the dynamic column names
   names(trt_est)[names(trt_est) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
   names(trt_est)[names(trt_est) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
 
-  out <- list(data = ad_int, est = trt_est)
 
-  return(out)
+  return(trt_est)
 }
 
-eval_ppos <- function(data_interim, n_post_interim, mu_c, mu_t, sd_c, sd_t,
-                             trt_names, gamma, num_chains, n.adapt, n.iter, perc_burnin,
-                             nsim = 1000) {
+
+
+# Internal function to evaluate the PPoS at an interim stage
+eval_ppos_mcmc <- function(data_interim,
+                      n_post_interim, # For how many patients do we need to generate additional data?
+                      gamma, num_chains, n.adapt, n.iter, perc_burnin,
+                      nsim = 1000) {
+
   # Keep track of observed parameter estimates at interim
   results_final <- data.frame(sim = numeric(),
                               Treatment = character(),
@@ -565,9 +608,8 @@ eval_ppos <- function(data_interim, n_post_interim, mu_c, mu_t, sd_c, sd_t,
                               I_k = numeric(),
                               success = logical())
 
+
   for (j in seq(nsim)) {
-    ## Add remaining data and calculate success
-    # Note that we simulate data for all arms, so n_pln needs to be adjusted
     dat_post_int <- generate_trial_data(N = n_post_interim,
                                         block_size = block_size,
                                         mean = c(mu_c, mu_t),
@@ -586,94 +628,57 @@ eval_ppos <- function(data_interim, n_post_interim, mu_c, mu_t, sd_c, sd_t,
   }
 
   ppos <- results_final %>% group_by(Treatment) %>%
-    summarize(ppos.est = mean(success),
+    summarize(n_fin = mean(n_c + n_t),
+              ppos.est = mean(success),
               ppos.se = sqrt(ppos.est*(1 - ppos.est)/n()))
 
   return(ppos)
 }
 
+eval_ppos_eq <- function(est_int, # Results from the interim analysis
+                         N_fin, # Number of patients in the trial at the final stage
+                              gamma) {
+
+  ppos <- data.frame(Treatment = character(),
+                     n_int = numeric(),
+                     N_fin = numeric(),
+                     ppos.est = numeric())
 
 
+  # Use approximation from Kundu et al. ignoring prior evidence
 
-# Not used
-predict_success <- function(data,
-                            N_planned,
-                            mu = c("Control" = 0,
-                                   "Velusetrag 15mg" = 0.4,
-                                   "Velusetrag 30mg" = 0.5), # Named vector with expected treatment effects
-                            sigma = c("Control" = 1,
-                                      "Velusetrag 15mg" = 1,
-                                      "Velusetrag 30mg" = 1), # Named vector with expected standard deviations
-                            gamma = 0.975,
-                            num_chains, n.adapt, n.iter, perc_burnin) {
+  n_c <- ds_int %>% filter(trt == 1) %>% summarize(n = n()) %>% pull(n)
+  var_c <- var(ds_int %>% filter(trt == 1)%>% pull(Y))
+  n_t <- ds_int %>% filter(trt != 1)%>% summarize(n = n()) %>% pull(n)
+  var_t <- var(ds_int %>% filter(trt != 1)%>% pull(Y))
 
-  n_arms <- length(unique(data$trt))
-  n_treat <- n_arms - 1
+  delta <- mean(ds_int %>% filter(trt != 1)%>% pull(Y)) - mean(ds_int %>% filter(trt == 1)%>% pull(Y))
 
-  # Derive summary statistics at interim
-  ad_int <- data  %>% group_by(Treatment) %>%
-    summarize(n = n(),
-              mean = mean(Y), var = var(Y),
-              tau = n/var(Y))
+  a <- n_t/n_c # Allocation ratio for treated vs control
+  r <- sqrt(((a + 1)**2)/a)
 
-  N <- rep(NA, n_arms)
-  Treatments <- rep("", n_arms)
-  Y <- data.frame(matrix(NA, ncol = n_arms, nrow = max(ad_int %>% pull(n))))
-  colnames(Y) <- ad_int %>% pull(Treatment)
+  n <- n_c + n_t
+  N_c_post <- N_post/(a+1)
+  N_t_post <- a*N_post/(a+1)
+  N <- N_c_post + N_t_post + n_c + n_t
 
-  for (k in seq(ncol(Y))) {
-    N[k] <- (ad_int %>% pull(n))[k]
-    Treatments[k] <- as.character((ad_int %>% pull(Treatment))[k])
-    Y[1:N[k], k] <- data %>% filter(Treatment == Treatments[k]) %>% pull(Y)
-  }
+  # Calculate pooled SD
+  sigma <- sqrt(((n_c - 1) * var_c + (n_t - 1) * var_t)/(n_c + n_t - 2))
+
+  ppos.seq1 <- 1/(r*sigma)
+  ppos.seq2 <- sqrt(n/(N-n))
+  ppos.seq3 <- (delta*sqrt(N))-(r*sigma*qnorm(gamma))
+
+  trtc <- (ds_int %>% filter(trt != 1)  %>% pull(Treatment))[1]
+
+  data.frame(Treatment = trtc,
+             n_int = n,
+             N_fin = N,
+             ppos.est = pnorm(ppos.seq1*ppos.seq2*ppos.seq3))
 
 
-  jags_data <- list(n = N,
-                    Y = Y,
-                    mu = mu[Treatments],
-                    tau = 1/(sigma[Treatments]**2),
-                    n_pln = N_planned,
-                    n_arms = n_arms)
-
-  # Parameters to monitor
-  params <- c("pred_trteff")
-
-  # Analyse the interim data
-  jags_model_int <- jags.model(file = file.path("./inst/jags/ppos_diff_means_multiarm.jags"),
-                               data = jags_data,
-                               n.chains = num_chains,
-                               n.adapt = n.adapt,
-                               quiet = TRUE)
-
-  ##Burnin stage
-  update(jags_model_int, n.iter = ceiling(n.iter*perc_burnin), progress.bar = "none")
-
-  ##Sampling after burnin
-  fit_jags_int <- coda.samples(jags_model_int, params,
-                               n.iter = floor(n.iter*(1 - perc_burnin)),
-                               progress.bar = "none")
-
-  ## Derive posterior distributions at interim
-  psample_int <- as.data.frame(do.call(rbind, fit_jags_int))
-
-  ##Hypothesis testing
-  sign <- data.frame(matrix(NA, ncol = n_arms, nrow = max(ad_int %>% pull(n))))
-  colnames(sign) <- Treatments
-  colnames(sign)[1] <- "N_per_arm"
-
-  for (treat in 2:n_arms) {
-    for (ni in N_planned:max(ad_int %>% pull(n))) {
-      trteff <- psample_int %>% pull(paste0("pred_trteff[", ni, ",", treat, "]"))
-      sign[paste0("N_",ni), "N_per_arm"] <- ni
-      sign[paste0("N_",ni), treat] <- ifelse(quantile(trteff, (1 - gamma)) > 0, 1, 0)
-    }
-  }
-
-  # Delete rows with no data
-  sign <- sign %>% filter(N_per_arm >= N_planned)
-
-  return(sign)
 }
+
 
 #' Title
 #'
