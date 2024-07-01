@@ -1,6 +1,6 @@
 library(dplyr)
 
-#' Conditional Power for Difference between Two Means
+#' Estimate the Power for Difference between Two Means
 #' The probability of success conditional on an assumed true treatment effect
 #' @param n1
 #' @param mu1
@@ -249,8 +249,8 @@ n_diff_means <- function(mu, sd, delta, alpha, beta, power_type, adjust) {
 #'            mu_c = 0, sd_c = 1, mu_t = mu_t, sd_t = sd_t, gamma = 0.98, nsim.ppos = 0)
 #' }
 eval_power <- function(n_int = 60, #20
-                             n_pln = 150, #45 + 20, #
-                             n_max = 180, #60 + 20, # 80
+                       n_pln = 150, #65 + 20, #
+                       n_max = 180, #80 + 20, # 80
                               block_size = 6, # block size for randomization
                               mu_c = 0,
                               sd_c = 1,
@@ -275,6 +275,9 @@ eval_power <- function(n_int = 60, #20
   n_treat <- length(mu_t)
   n_arms <- n_treat + 1
 
+  n_per_arm_int <- n_int/n_arms
+  n_per_arm_pln <- (n_pln - (n_int/n_arms))/2
+  n_per_arm_max <- (n_max - (n_int/n_arms))/2
 
 
   if (any(c(n_int, n_pln, n_max) < 0)) {
@@ -298,40 +301,17 @@ eval_power <- function(n_int = 60, #20
   sigma <- c(sd_c, sd_t)
   names(mu) <- names(sigma) <- trt_names
 
+  simresults <- data.frame(sim = seq(nsim),
+                           n_int = NA,
+                           n_pln = NA,
+                           n_max = NA,
+                           fut.trig = FALSE,
+                           inc.ss = FALSE,
+                           sel.dose = NA,
+                           sel.dose.ppos = NA,
+                           n_fin = NA,
+                           power_fin = NA)
 
-  # Keep track of observed parameter estimates at interim
-  results_interim <- tibble(
-    sim = integer(),
-    Treatment = character(),
-    trt = integer(),
-    n_c = integer(),
-    n_t = integer(),
-    est_lower = double(),
-    est = double(),
-    est_upper = double(),
-    est_se = double(),
-    z_test = double(),
-    I_k = double(),
-    success = logical(),
-    ppos.est = numeric(),
-    N_fin = numeric(),
-    fut.trt = logical()
-  )
-
-  # Assign the dynamic column names
-  names(results_interim)[names(results_interim) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
-  names(results_interim)[names(results_interim) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
-
-  results_per_trial <- data.frame(sim = seq(nsim),
-                                  n_int = NA,
-                                  n_pln = NA,
-                                  n_max = NA,
-                                  fut.trig = FALSE,
-                                  inc.ss = FALSE)
-
-
-  # Keep track of the final sample size per arm
-  n_final <- rep(n_pln, nsim)
 
   if (progress.bar == "text") {
     pb <- txtProgressBar(min = 0, max = nsim, initial = 0)
@@ -353,54 +333,91 @@ eval_power <- function(n_int = 60, #20
                                sd = c(sd_c, sd_t),
                                trtnames = trt_names)
 
-    results_per_trial$n_int[i] <- nrow(dat_int)
-    results_per_trial$n_pln[i] <- n_pln
-    results_per_trial$n_max[i] <- n_max
+    simresults$n_int[i] <- nrow(dat_int)
+    simresults$n_pln[i] <- n_pln
+    simresults$n_max[i] <- n_max
 
-    # Assess success at the interim stage
-    result_int <- eval_superiority(data = dat_int,
-                                   margin = 0,
-                                   gamma = gamma,
-                                   num_chains = num_chains,
+    # Evaluate PPOS at the planned sample size
+    result_pln <- eval_predictive_power(dat = dat_int, n_per_arm = n_per_arm_pln, block_size = block_size, mu_c = mu_c,
+                                        mu_t = mu_t, sd_c = sd_c, sd_t = sd_t, trt_names = trt_names,
+                                        num_chains = num_chains, n.adapt = n.adapt, n.iter = n.iter,
+                                        perc_burnin = perc_burnin, gamma = gamma)
+
+    if (max(result_pln$ppos) < th.fut) {
+      simresults$fut.trig[i] <- TRUE
+      simresults$inc.ss[i] <- FALSE
+      simresults$n_fin[i] <- n_pln
+      simresults$sel.dose[i] <- result_pln$trt[order(result_pln$ppos, decreasing = TRUE)[1]]
+      simresults$sel.dose.ppos[i] <- result_pln$ppos[order(result_pln$ppos, decreasing = TRUE)[1]]
+    } else if (max(result_pln$ppos) >= th.prom & max(result_pln$ppos) < th.eff) {
+      simresults$fut.trig[i] <- FALSE
+      simresults$inc.ss[i] <- TRUE
+
+      # Evaluate predictive power for each sample size
+      ppos_by_n <- data.frame(n_eval = numeric(), Treatment = character(),
+                              trt = numeric(),
+                              n = numeric(), ppos = numeric())
+      for (n_eval in (n_per_arm_pln + 1):n_per_arm_max) {
+        result_pln_inc <- eval_predictive_power(dat = dat_int, n_per_arm = n_eval, block_size = block_size, mu_c = mu_c,
+                                                mu_t = mu_t, sd_c = sd_c, sd_t = sd_t, trt_names = trt_names,
+                                                num_chains = num_chains, n.adapt = n.adapt, n.iter = n.iter,
+                                                perc_burnin = perc_burnin, gamma = gamma)
+        ppos_by_n <- ppos_by_n %>% add_row(cbind(n_eval, result_pln_inc %>% select(Treatment, trt, n, ppos)))
+      }
+
+      # Select the lowest sample size resulting in a PPOS >= th.eff
+      filtered_ppos <- subset(ppos_by_n, ppos >= th.eff)
+
+      if (nrow(filtered_ppos) > 0) {
+        sel_row <- filtered_ppos[which.min(filtered_ppos$n_eval),]
+        simresults$sel.dose[i] <- sel_row$trt
+        simresults$sel.dose.ppos[i] <- sel_row$ppos
+        simresults$n_fin[i] <- sel_row$n_eval*2 + n_int - (2*n_per_arm_int)
+      } else {
+        # Increasing the sample size did not help to attain target power
+        # Keep the maximum sample size
+        simresults$sel.dose[i] <- result_pln$trt[order(result_pln$ppos, decreasing = TRUE)[1]]
+        simresults$sel.dose.ppos[i] <- result_pln$ppos[order(result_pln$ppos, decreasing = TRUE)[1]]
+        simresults$n_fin[i] <- n_max
+      }
+    } else {
+      simresults$fut.trig[i] <- FALSE
+      simresults$inc.ss[i] <- FALSE
+      simresults$n_fin[i] <- n_pln
+
+      # If both predictive powers exceed 0.9 then
+      # choose Low dose otherwise choose the dose with higher
+      # predictive power
+      if (sum((result_pln$ppos >= th.eff)) >= 2 & prioritize_low_trteff) {
+        simresults$sel.dose[i] <- result_pln$trt[order(mu_t[which(result_pln$ppos >= th.eff)], decreasing = FALSE)[1]]
+        simresults$sel.dose.ppos[i] <- result_pln$ppos[order(mu_t[which(result_pln$ppos >= th.eff)], decreasing = FALSE)[1]]
+      } else {
+        simresults$sel.dose[i] <- result_pln$trt[order(result_pln$ppos, decreasing = TRUE)[1]]
+        simresults$sel.dose.ppos[i] <- result_pln$ppos[order(result_pln$ppos, decreasing = TRUE)[1]]
+      }
+    }
+
+    # Evaluate the power in the final sample size
+    # Calculate how many extra patients we have to generate
+    n_per_arm_fin <- (simresults$n_fin[i] - (nrow(dat_int)-(n_per_arm_int*2)))/2
+
+    # Calculate how many extra patients we have to generate
+    dat_fin <- generate_trial_data(N = (n_per_arm_fin - n_per_arm_int) * n_arms,
+                                   block_size = block_size,
+                                   mean = c(mu_c, mu_t),
+                                   sd = c(sd_c, sd_t),
+                                   trtnames = trt_names)
+
+    # Keep the reference treatment and the selected treatment
+    dat_fin <- dat_fin %>% filter(trt %in% c(1,simresults$sel.dose[i]))
+
+    result_fin <- eval_superiority(rbind(dat_int, dat_fin),
+                                   margin = 0, # Superiority margin
+                                   gamma = gamma, num_chains = num_chains,
                                    n.adapt = n.adapt, n.iter = n.iter,
                                    perc_burnin = perc_burnin)
 
-    # Evaluate PPOS
-    dat_post_int <- generate_trial_data(N = n_post_interim,
-                                        block_size = block_size,
-                                        mean = c(mu_c, mu_t),
-                                        sd = c(sd_c, sd_t),
-                                        trtnames = trt_names) %>% mutate(Y = NA)
-
-    result_fin <- eval_superiority(rbind(dat_int, dat_post_int), margin = 0, gamma = gamma, num_chains = num_chains,
-                     n.adapt = n.adapt, n.iter = n.iter, perc_burnin = perc_burnin)
-
-    # Evaluate PPOS freq
-    # Calculate pooled SD
-    sigma <- sqrt(((20 - 1) * 1.10689 + (20 - 1) * 1.106016)/(40 - 2))
-
-    ppos.seq1 <- 1/(2*sigma)
-    ppos.seq2 <- sqrt(40/(130-40))
-    ppos.seq3 <- (0.55950954*sqrt(130))-(2*sigma*qnorm(gamma))
-    pnorm(ppos.seq1*ppos.seq2*ppos.seq3)
-
-
-
-    # Store the interim results
-    out_int <- cbind(sim = i, result_int$est %>% merge(ppos %>% select(Treatment, N_fin, ppos.est), by = "Treatment"))
-
-    # Futility of individual treatments
-    out_int <- out_int %>% mutate(fut.trt = ifelse(ppos.est < th.fut, TRUE, FALSE))
-    results_per_trial$fut.trig[i] <- all(out_int$fut.trt) # Futility for all treatments?
-
-
-    results_interim <- results_interim %>% add_row(out_int)
-
-    # by default, the final sample size is the planned sample size
-
-
-
-
+    simresults$power_fin[i] <- result_fin %>% filter(trt == simresults$sel.dose[i]) %>% pull(pos)
 
     if (progress.bar == "text") {
       setTxtProgressBar(pb, i)
@@ -411,63 +428,49 @@ eval_power <- function(n_int = 60, #20
     close(pb)
   }
 
+  out.assumptions <- list(mu_c = mu_c, mu_t = mu_t, sd_c = sd_c, sd_t = sd_t)
 
-
-
-
-
-  # Futility triggering
-  mean(fut.trig)
-
-  # Inc ss
-  mean(inc.ss)
-
-  # Final sample size
-  mean(2*n_final + n_int)
-
-
-
-  # Power at interim
-  colMeans(sig_interim)
-
-
-
-
-
-
-  # Calculate the probability that a certain dose is selected at interim
-  P.sel <- table(sel_dose)/nsim
-  names(P.sel) <- trt_names[-1]
-
-  # Calculate average final sample size
-  N.final <- colMeans(n_final)
-
-  pop_mean <- c(mu_c, mu_t)
-  pop_stdev <- c(sd_c, sd_t)
-  names(pop_mean) <- names(pop_stdev) <- trt_names
-
-  assumptions <- list(pop_mean = pop_mean,
-                      pop_stdev = pop_stdev)
-  result.start <- list(power = power_trial_start)
-  result.interim <- list(P.fut.trig = mean(fut.trig),
-                         P.sel = P.sel,
-                         P.inc.ss = mean(inc.ss),
-                         param_fut.trig = colMeans(param_mean_int[fut.trig,]),  # effect size at interim when futility is triggered
-                         param_inc.ss = colMeans(param_mean_int[inc.ss,]), # effect size at interim when sample size increase is needed
-                         psrf.est.0975 = apply(psrf_est_int, 2, function(x) quantile(x, 0.975)), #97.5 quantile of PSRF estimate
-                         psrf.uci.0975 = apply(psrf_uci_int, 2, function(x) quantile(x, 0.975))) #97.5 quantile of PSRF upper CI
-
-  result.final <- list(power = mean(hypothesis_testing),
-                       N.final = N.final)
-
-  out <- list(assumptions = assumptions,
+  out <- list(assumptions = out.assumptions,
               gamma = gamma,
-              result.start = result.start,
-              result.interim = result.interim,
-              result.final = result.final)
+              simresults = simresults,
+              power = median(simresults$power_fin))
 
+  class(out) <- "ssbayes"
   return(out)
+}
 
+#' Title
+#'
+#' @param dat Interim data
+#' @param n_per_arm Total sample size per arm at the final stage
+#' @param block_size Block size
+#'
+#' @return
+#' @export
+#'
+#' @examples
+eval_predictive_power <- function(dat, n_per_arm, ...) {
+
+  # Calculate number of arms
+  n_arms <- length(unique(dat$Treatment))
+
+  # Calculate how many extra patients we have to generate
+  n_post_interim <- n_per_arm*n_arms - nrow(dat)
+
+  dat_extra <- generate_trial_data(N = n_post_interim,
+                                      block_size = block_size,
+                                      mean = c(mu_c, mu_t),
+                                      sd = c(sd_c, sd_t),
+                                      trtnames = trt_names,
+                                      censor_Y = TRUE)
+
+  result_fin <- eval_superiority(rbind(dat, dat_extra),
+                                 margin = 0, # Superiority margin
+                                 gamma = gamma, num_chains = num_chains,
+                                 n.adapt = n.adapt, n.iter = n.iter,
+                                 perc_burnin = perc_burnin)
+
+  return(result_fin)
 }
 
 #' Evaluate the posterior probability of treatment superiority
@@ -683,17 +686,22 @@ eval_ppos_eq <- function(est_int, # Results from the interim analysis
 #' Title
 #'
 #' @param N Total number of patients needed
-#' @param N_interim Total number of patients at interim
 #' @param block_size Randomization block size
 #' @param mean Effect size for each treatment
 #' @param sd Standard deviation for each treatment
+#' @param trtnames Treatment names
+#' @param censor_Y Do we observe the outcomes?
 #'
 #' @return A dataframe with simulated trial data
 #' @export
 #'
 #' @examples
 generate_trial_data <- function(N,
-                                block_size, mean, sd, trtnames) {
+                                block_size,
+                                mean,
+                                sd,
+                                trtnames,
+                                censor_Y = FALSE) {
 
   n_arms <- length(mean)
 
@@ -726,6 +734,10 @@ generate_trial_data <- function(N,
                                       trt = factor(Treatment,
                                                          labels = seq(trtnames),
                                                          levels = trtnames))
+
+  if (censor_Y) {
+    trial_data <- trial_data %>% mutate(Y = NA)
+  }
 
 
   return(trial_data)

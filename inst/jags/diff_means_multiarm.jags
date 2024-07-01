@@ -6,5 +6,6 @@ model{
     mean_t[i] ~ dnorm(mu_t[i], tau_t[i])
     mu_t[i] ~ dnorm(0, 1e-6)
     trteff[i] <- mu_t[i] - mu_c
+
   }
 }
