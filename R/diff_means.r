@@ -247,29 +247,34 @@ n_diff_means <- function(mu, sd, delta, alpha, beta, power_type, adjust) {
 #'            mu_c = 0, sd_c = 1, mu_t = mu_t, sd_t = sd_t, gamma = 0.98, nsim.ppos = 0)
 #' }
 bcts <- function(n_per_arm_int = 20,
-                             n_per_arm_pln = 65,
-                             n_per_arm_max = 80,
-                       block.sizes = 1, # block size for randomization
-                              mu_c = 0,
-                              sd_c = 1,
-                              mu_t = c("Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
-                              sd_t = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
-                              prioritize_low_trteff = TRUE,
-                              gamma = 0.98, #   %
-                              th.fut = 0.2, ##
-                              th.eff = 0.9, ##
-                              th.prom = 0.5, ##
-                              nsim = 1000, # no. of simulatoins at trial start
-                              num_chains = 4,
-                              n.iter = 5000, #
-                              n.adapt = 500,
-                              perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
-                              progress.bar = "text", #
-                              quiet = TRUE) {
+                 n_per_arm_pln = 65,
+                 n_per_arm_max = 80,
+                 block.sizes = 1, # block size for randomization
+                 mu_c = 0,
+                 sd_c = 1,
+                 mu_t = c("Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
+                 sd_t = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1),
+                 prioritize_low_trteff = TRUE,
+                 gamma, #0.98   %
+                 th.fut = 0.2, ##
+                 th.eff = 0.9, ##
+                 th.prom = 0.5, ##
+                 nsim = 1000, # no. of simulatoins at trial start
+                 num_chains = 4,
+                 n.iter = 5000, #
+                 n.adapt = 500,
+                 perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
+                 progress.bar = "text", #
+                 quiet = TRUE) {
   require(rjags)
+  require(binom)
 
   # Sample the random seeds
   seeds <- sample(seq(nsim*10,nsim*20), size = nsim)
+
+  # Select treatment with highest dose
+  trt_high <- order(mu_t, decreasing = TRUE)[1] + 1
+  trt_low <- order(mu_t, decreasing = FALSE)[1] + 1
 
 
   n_treat <- length(mu_t)
@@ -283,6 +288,8 @@ bcts <- function(n_per_arm_int = 20,
   # Check if all elements are equal
   if (all(mu_t == mu_c) & !quiet) {
     message("Evaluating the type-I error")
+  } else {
+    message("Evaluating the power")
   }
 
   # Extract the treatment names
@@ -454,26 +461,28 @@ bcts <- function(n_per_arm_int = 20,
     close(pb)
   }
 
-  out.assumptions <- list(mu_c = mu_c, mu_t = mu_t, sd_c = sd_c, sd_t = sd_t)
-  out.n <- list(interim = n_per_arm_int*n_arms)
+  out.n <- list(interim = n_per_arm_int*n_arms,
+                final = mean(simresults$n_per_arm_fin*2) + n_per_arm_int*(n_arms - 2))
 
-  out <- list(assumptions = out.assumptions,
+  out <- list(mu = c(mu_c, mu_t),
+              sigma = c(sd_c, sd_t),
               n = out.n,
               gamma = gamma,
-              power = mean(simresults$sig),
+              power =  binom.confint(x = sum(simresults$sig_fin), n = nsim, methods = "exact"),
+              fut.trig = binom.confint(x = sum(simresults$fut.trig), n = nsim, methods = "exact"),
+              inc.ss = binom.confint(x = sum(simresults$inc.ss), n = nsim, methods = "exact"),
+              sel.low = binom.confint(x = sum(simresults$sel.dose == trt_low), n = nsim, methods = "exact"),
+              sel.high = binom.confint(x = sum(simresults$sel.dose == trt_high), n = nsim, methods = "exact"),
               simresults = simresults,
               results_interim = results_interim,
               results_max = results_max,
               results_final = results_final
               )
 
-  class(out) <- "ssbayes"
+  class(out) <- "bcts"
   return(out)
 }
 
-eval_power <- function(dat, ...) {
-
-}
 
 
 #' Evaluate the posterior probability of treatment superiority
