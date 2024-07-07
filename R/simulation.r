@@ -46,8 +46,7 @@ eval_bcts <- function(n_per_arm_int = 20,
                    n.adapt = 500,
                    perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
                    slevel = 0.05, # Confidence level for summary estimates of interest
-                   progress.bar = "text", #
-                   quiet = TRUE) {
+                   progress.bar = "text") {
 
   # Evaluate type-I error
   mu_t_type1 <- mu_t
@@ -58,8 +57,7 @@ eval_bcts <- function(n_per_arm_int = 20,
                     prioritize_low_trteff = prioritize_low_trteff, gamma = gamma, #   %
                     th.fut = th.fut, th.eff = th.eff, th.prom = th.prom, ##
                     nsim = nsim, num_chains = num_chains, n.iter = n.iter, #
-                    n.adapt = n.adapt, perc_burnin = perc_burnin, progress.bar = progress.bar, #
-                    quiet = quiet)
+                    n.adapt = n.adapt, perc_burnin = perc_burnin, progress.bar = progress.bar)
 
   # Evaluate power
   sim_power <- bcts(n_per_arm_int = n_per_arm_int, n_per_arm_pln = n_per_arm_pln,
@@ -68,8 +66,7 @@ eval_bcts <- function(n_per_arm_int = 20,
                     prioritize_low_trteff = prioritize_low_trteff, gamma = gamma, #   %
                     th.fut = th.fut, th.eff = th.eff, th.prom = th.prom, ##
                     nsim = nsim, num_chains = num_chains, n.iter = n.iter, #
-                    n.adapt = n.adapt, perc_burnin = perc_burnin, progress.bar = progress.bar, #
-                    quiet = quiet)
+                    n.adapt = n.adapt, perc_burnin = perc_burnin, progress.bar = progress.bar)
 
   ## Get quantiles of final sample size
   n_fin_qt <- quantile(sim_power$simresults$n_per_arm_fin, c(slevel/2, 1 - (slevel/2)))

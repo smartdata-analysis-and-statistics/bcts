@@ -238,14 +238,6 @@ n_diff_means <- function(mu, sd, delta, alpha, beta, power_type, adjust) {
 #' @return
 #' @export
 #'
-#' @examples
-#' \dontrun{
-#' mu_t = c("Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5)
-#' sd_t = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1)
-#'
-#' eval_power(n_int = 60, n_pln = 150, n_max = 180, block_size = 6,
-#'            mu_c = 0, sd_c = 1, mu_t = mu_t, sd_t = sd_t, gamma = 0.98, nsim.ppos = 0)
-#' }
 bcts <- function(n_per_arm_int = 20,
                  n_per_arm_pln = 65,
                  n_per_arm_max = 80,
@@ -255,7 +247,7 @@ bcts <- function(n_per_arm_int = 20,
                  mu_t = c("Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
                  sd_t = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1),
                  prioritize_low_trteff = TRUE,
-                 gamma, #0.98   %
+                 gamma = 0.975, #0.98   %
                  th.fut = 0.2, ##
                  th.eff = 0.9, ##
                  th.prom = 0.5, ##
@@ -264,8 +256,7 @@ bcts <- function(n_per_arm_int = 20,
                  n.iter = 5000, #
                  n.adapt = 500,
                  perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
-                 progress.bar = "text", #
-                 quiet = TRUE) {
+                 progress.bar = "text") {
   require(rjags)
   require(binom)
 
@@ -283,14 +274,6 @@ bcts <- function(n_per_arm_int = 20,
   # Calculate the sample sizes
   n_pln <- 2*n_per_arm_pln + (length(mu_t) - 1)*n_per_arm_int
   n_max <- 2*n_per_arm_max + (length(mu_t) - 1)*n_per_arm_int
-
-
-  # Check if all elements are equal
-  if (all(mu_t == mu_c) & !quiet) {
-    message("Evaluating the type-I error")
-  } else {
-    message("Evaluating the power")
-  }
 
   # Extract the treatment names
   if (is.null(names(mu_t))) {
@@ -507,15 +490,13 @@ bcts <- function(n_per_arm_int = 20,
 #'
 #' @examples
 eval_superiority <- function(data,
-                             margin = 0,
+                             margin, #,
                              gamma, #0.975
                              num_chains,
                              n.adapt, n.iter, perc_burnin) {
 
   treatments <- unique(data$trt)
   z_crit <- qnorm(gamma)
-
-
 
   jags.config <- prepare_jags_ppos(dat = data, gamma = gamma)
 
@@ -602,130 +583,6 @@ eval_superiority <- function(data,
 
   return(trt_est)
 }
-
-#' Assess the Predictive Power of success (PPoS)in an empirical manner
-#'
-#' @param interim_data
-#' @param N
-#' @param mu_c
-#' @param mu_t
-#' @param sd_c
-#' @param sd_t
-#' @param block.sizes
-#' @param margin
-#' @param gamma
-#' @param num_chains
-#' @param n.adapt
-#' @param n.iter
-#' @param perc_burnin
-#'
-#' @return
-#' @export
-#'
-#' @examples
-eval_predictive_power <- function(interim_data,
-                                  N_per_arm,  # Planned sample size per arm
-                                  mu_c, mu_t, sd_c, sd_t,
-                                  block.sizes, margin = 0,
-                                  gamma = 0.975,
-                                  num_chains,
-                                  n.adapt, n.iter, perc_burnin) {
-
-  n_arms <- length(unique(interim_data$trt))
-
-  sign <- matrix(NA, nrow = 1000, ncol = n_arms)
-
-
-  for (i in 1 : 1000) {
-    # Generate extra data
-    ds <- sim_rct_normal(n = N_per_arm*n_arms - nrow(interim_data),
-                         mean = c(mu_c, mu_t),
-                         sd = c(sd_c, sd_t),
-                         trtnames = trt_names,
-                         block.sizes = block.sizes)
-    rs <- eval_superiority(rbind(interim_data, ds),
-                          margin = 0, # Superiority margin
-                          gamma = gamma, num_chains = num_chains,
-                          n.adapt = n.adapt, n.iter = n.iter,
-                          perc_burnin = perc_burnin)
-
-    for (k in 2:n_arms) {
-      sign[i,rs$trt] = rs$sigb
-    }
-  }
-
-  return(sign)
-}
-
-
-
-
-#' Title
-#'
-#' @param N Total number of patients needed
-#' @param block_size Randomization block size
-#' @param mean Effect size for each treatment
-#' @param sd Standard deviation for each treatment
-#' @param trtnames Treatment names
-#' @param censor_Y Do we observe the outcomes?
-#'
-#' @return A dataframe with simulated trial data
-#' @export
-#'
-#' @examples
-generate_trial_data <- function(N,
-                                block_size,
-                                mean,
-                                sd,
-                                trtnames,
-                                censor_Y = FALSE) {
-
-  # Function to create a single block of random assignments
-  create_block <- function(block_size, treatment_groups) {
-    assignments <- rep(treatment_groups, each = block_size / length(treatment_groups))
-    sample(assignments)
-  }
-
-  n_arms <- length(mean)
-
-  # Number of randomization blocks needed until interim
-  num_blocks_int <- ceiling(N/block_size)
-
-  if (block_size %% n_arms != 0) {
-    stop("Please adjust the block size to ensure it is a multiple of the number of arms")
-  }
-
-  # Generate the full randomization sequence
-  randomization_sequence <- unlist(lapply(seq(num_blocks_int), function(x) create_block(block_size, trtnames)))
-
-  # Create a data frame to store the simulated trial data
-  trial_data <- data.frame(
-    Participant = seq(N),
-    Treatment = randomization_sequence[1:N],
-    trt = NA,
-    Y = NA
-  )
-
-  # Count number of patients per treatment
-  n_per_arm <- trial_data %>% group_by(Treatment) %>% summarize(n = n())
-
-  for (treat in seq(mean)) {
-    Y_sim <- rnorm(n_per_arm %>% filter(Treatment == trtnames[treat]) %>% pull(n), mean[treat], sd[treat])
-    trial_data <- trial_data %>% mutate(Y = ifelse(Treatment == trtnames[treat], Y_sim, Y))
-  }
-  trial_data <- trial_data %>% mutate(Treatment = factor(Treatment),
-                                      trt = factor(Treatment,
-                                                         labels = seq(trtnames),
-                                                         levels = trtnames))
-
-  if (censor_Y) {
-    trial_data <- trial_data %>% mutate(Y = NA)
-  }
-
-  return(trial_data)
-}
-
-
 
 
 

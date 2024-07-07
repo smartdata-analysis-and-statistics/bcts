@@ -1,7 +1,5 @@
 # Evaluate type-I error over a grid of gamma
-require(binom)
-
-nsim <- 1000
+nsim <- 10000
 gammas <- seq(from = 0.98, to = 0.99, by = 0.001)
 
 results <- data.frame(gamma = numeric(),
@@ -26,13 +24,14 @@ for (i in seq(gammas)) {
                    n.iter = 10, #
                    n.adapt = 500,
                    perc_burnin = 0.2,
-                   progress.bar = "text", #
-                   quiet = FALSE)
+                   progress.bar = "text")
   results <- results %>% add_row(cbind(gamma = gammas[i], sim))
 }
 
+saveRDS(results, file = "CIPO/sim20.65.80.rds")
 
-# Plot type-I error
+
+# Plot Power and type-I error
 ggplot(results %>% filter(statistic %in% c("Power", "Type-I error")), aes(x=gamma, y = est, ymin = cil, ymax = ciu, color = statistic)) +
   geom_point() +
   xlab("Gamma") +
@@ -41,3 +40,15 @@ ggplot(results %>% filter(statistic %in% c("Power", "Type-I error")), aes(x=gamm
   geom_hline(yintercept = 0.025, lty = 2, col = "blue") +
   geom_hline(yintercept = 0.8, lty = 2, col = "grey") +
   ggtitle("N = 20; 65; 80")
+
+# Plot Pr(inc.ss) and Pr(fut.trig)
+ggplot(results %>% filter(statistic %in% c("Pr(fut.trig)", "Pr(inc.ss)", "Pr(sel.high)")),
+       aes(x=gamma, y = est, ymin = cil, ymax = ciu)) +
+  geom_point() +
+  xlab("Gamma") +
+  geom_errorbar() +
+  ggtitle("N = 20; 65; 80") + facet_wrap(~statistic)
+
+
+
+

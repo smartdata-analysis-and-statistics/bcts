@@ -31,31 +31,44 @@ test_that("Test type-I error control", {
 })
 
 
-test_that("Test group means", {
+test_that("Test distribution of simulated data", {
 
   nsim <- 1000
 
   mu_est <- data.frame(control = rep(NA, nsim), treat1 = NA, treat2 = NA)
+  sigma_est <- data.frame(control = rep(NA, nsim), treat1 = NA, treat2 = NA)
 
   for (i in 1:nsim) {
     # generate trial data
-    ds <- sim_rct_normal(n = 500, mean = c(0, 0.4, 0.5), sd = c(1, 1, 1),
+    ds <- sim_rct_normal(n = 1000, mean = c(0, 0.4, 0.5), sd = c(1, 1, 2),
                          trtnames = c("control", "treat1", "treat2"),
                          block.sizes = 1)
 
-    means <- ds %>% group_by(Treatment) %>% summarize(mu = mean(Y))
+    pop_param <- ds %>% group_by(Treatment) %>% summarize(mu = mean(Y), sigma = sd(Y))
 
     # Ensure the Treatment column is treated as a character
-    treatments <- as.character(means %>% pull(Treatment))
+    treatments <- as.character(pop_param %>% pull(Treatment))
 
-    mu_est[i, treatments] <- means %>% pull(mu)
+    mu_est[i, treatments] <- pop_param %>% pull(mu)
+    sigma_est[i, treatments] <- pop_param %>% pull(sigma)
   }
 
-  se <- apply(mu_est, 2, sd)/sqrt(nsim)
+  mu_qnt <- apply(mu_est, 2, quantile, c(0.05, 0.95))
+  sigma_qnt <- apply(sigma_est, 2, quantile, c(0.05, 0.95))
 
 
-  # Check if alpha is within the confidence interval
-  expect_true(alpha >= type1.ci$lower & alpha <= type1.ci$upper,
-              info = "The confidence interval does not contain alpha.")
+  expect_true(0 >= mu_qnt["5%", "control"] & 0 <= mu_qnt["95%", "control"],
+              info = "The mean outcome in treatment group 'control' is not controlled")
+  expect_true(0.4 >= mu_qnt["5%", "treat1"] & 0.4 <= mu_qnt["95%", "treat1"],
+              info = "The mean outcome in treatment group 1 is not controlled.")
+  expect_true(0.5 >= mu_qnt["5%", "treat2"] & 0.5 <= mu_qnt["95%", "treat2"],
+              info = "The mean outcome in treatment group 2 is not controlled")
+
+  expect_true(1 >= sigma_qnt["5%", "control"] & 1 <= sigma_qnt["95%", "control"],
+              info = "The mean outcome in treatment group 'control' is not controlled")
+  expect_true(1 >= sigma_qnt["5%", "treat1"] & 1 <= sigma_qnt["95%", "treat1"],
+              info = "The mean outcome in treatment group 1 is not controlled.")
+  expect_true(2 >= sigma_qnt["5%", "treat2"] & 2 <= sigma_qnt["95%", "treat2"],
+              info = "The mean outcome in treatment group 2 is not controlled")
 
 })
