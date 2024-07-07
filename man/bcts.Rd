@@ -73,6 +73,6 @@ will be selected at interim  (prioritize_low_trteff = TRUE).}
 An object of class "bcts"
 }
 \description{
-The null hypothesis can be rejected when the posterior probability that $\mu_t$ - $\mu_c$ exceeds a high probability threshold,
-i.e. $Pr(\mu_t - \mu_c > 0|D) > $\gamm$)$.
+The null hypothesis can be rejected when the posterior probability that $\\mu_t$ - $\\mu_c$ exceeds a high probability threshold,
+i.e. $Pr(\\mu_t - \\mu_c > 0|D) > $\\gamma$)$.
 }

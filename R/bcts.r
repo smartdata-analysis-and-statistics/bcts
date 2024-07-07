@@ -89,6 +89,7 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
 #' @param prioritize_low_trteff  If multiple treatments have a posterior predictive power > 'th.eff', the treatment with lowest effect size
 #' will be selected at interim  (prioritize_low_trteff = TRUE).
 #' @param gamma Level to declare success. For a fixed design, gamma is typically chosen as 0.975 for a one-sided type-I error rate of 2.5%. However, an increase is usually needed because of dose selection.
+#' @param method Analysis method. Choose 'mcmc' or 'bayes'
 #' @param th.fut Futility threshold for the predictive power calculated conditioned on the interim data
 #' @param th.eff Efficacy threshold for the predictive power calculated conditioned on the interim data
 #' @param th.prom Predictive power threshold that would trigger sample size increase
@@ -102,11 +103,14 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
 #' @param quiet Display messaging output
 #'
 #' @description
-#' The null hypothesis can be rejected when the posterior probability that $\mu_t$ - $\mu_c$ exceeds a high probability threshold,
-#' i.e. $Pr(\mu_t - \mu_c > 0|D) > $\gamm$)$.
+#' The null hypothesis can be rejected when the posterior probability that $\\mu_t$ - $\\mu_c$ exceeds a high probability threshold,
+#' i.e. $Pr(\\mu_t - \\mu_c > 0|D) > $\\gamma$)$.
 #'
 #'
 #' @return An object of class "bcts"
+#' @importFrom dplyr %>%
+#' @importFrom dplyr slice_head mutate select filter add_row pull
+#' @importFrom utils txtProgressBar setTxtProgressBar
 #' @export
 #'
 bcts <- function(n_per_arm_int = 20,
@@ -129,8 +133,7 @@ bcts <- function(n_per_arm_int = 20,
                  n.adapt = 500,
                  perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
                  progress.bar = "text") {
-  require(rjags)
-  require(binom)
+
 
   # Sample the random seeds
   seeds <- sample(seq(nsim*10,nsim*20), size = nsim)
@@ -185,7 +188,7 @@ bcts <- function(n_per_arm_int = 20,
   names(results_final)[names(results_final) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
 
   if (progress.bar == "text") {
-    pb <- txtProgressBar(min = 0, max = nsim, initial = 0)
+    pb <- utils::txtProgressBar(min = 0, max = nsim, initial = 0)
   }
 
   for (i in 1:nsim) {
@@ -201,8 +204,9 @@ bcts <- function(n_per_arm_int = 20,
 
 
     # Evaluate PPOS at the planned sample size
-    dat_pln <- dat_max %>% slice_head(n = n_per_arm_pln*n_arms) %>%
-      mutate(Y = ifelse(id > n_per_arm_int*n_arms, NA, Y))
+    dat_pln <- dat_max %>%
+      dplyr::slice_head(n = n_per_arm_pln*n_arms) %>%
+      dplyr::mutate(Y = ifelse(id > n_per_arm_int*n_arms, NA, Y))
 
     result_pln <- eval_superiority(dat_pln, margin = 0, gamma = gamma,
                                    method = method, num_chains = num_chains,
@@ -276,8 +280,9 @@ bcts <- function(n_per_arm_int = 20,
     }
 
     # Keep the reference treatment and the selected treatment
-    dat_fin <- dat_max %>% filter(trt %in% c(1,simresults$sel.dose[i])) %>%
-      slice_head(n = simresults$n_per_arm_fin[i]*2)
+    dat_fin <- dat_max %>%
+      filter(trt %in% c(1,simresults$sel.dose[i])) %>%
+      dplyr::slice_head(n = simresults$n_per_arm_fin[i]*2)
 
     result_fin <- eval_superiority(data = dat_fin, margin = 0, gamma = gamma,
                                    method = method, num_chains = num_chains,
@@ -289,7 +294,7 @@ bcts <- function(n_per_arm_int = 20,
     simresults$sig_fin[i] <- result_fin %>% pull(rejectH0)
 
     if (progress.bar == "text") {
-      setTxtProgressBar(pb, i)
+      utils::setTxtProgressBar(pb, i)
     }
   }
 
@@ -360,6 +365,20 @@ eval_superiority <- function(data,
 }
 
 
+#' Bayesian method to evaluate superiority
+#'
+#' @param data
+#' @param margin
+#' @param gamma
+#' @param num_chains
+#' @param n.adapt
+#' @param n.iter
+#' @param perc_burnin
+#'
+#' @importFrom stats qnorm
+#'
+#' @return
+#'
 eval_superiority_bayes <- function(data, margin, gamma, num_chains, n.adapt, n.iter, perc_burnin) {
 
   treatments <- unique(data$trt)
@@ -410,14 +429,14 @@ eval_superiority_bayes <- function(data, margin, gamma, num_chains, n.adapt, n.i
                                               "trt" = as.numeric(treat),
                                               "n" = n,
                                               "N" = N,
-                                              "est_lower" = quantile(mudiff, 1 - gamma),
+                                              "est_lower" = stats::quantile(mudiff, 1 - gamma),
                                               "est" = mean(mudiff),
-                                              "est_upper" = quantile(mudiff, gamma),
+                                              "est_upper" = stats::quantile(mudiff, gamma),
                                               "est_se" = sd(mudiff),
                                               "Z_test" = mean(mudiff)/sd(mudiff),
                                               "Z_crit" = qnorm(gamma),
                                               "I" = 1/var(mudiff),
-                                              "rejectH0" = quantile(mudiff, (1 - gamma)) > 0,
+                                              "rejectH0" = stats::quantile(mudiff, (1 - gamma)) > 0,
                                               "ppos" = mean(PPOS)))
   }
 

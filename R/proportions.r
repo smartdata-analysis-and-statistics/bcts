@@ -48,8 +48,8 @@ N_two_sample_proportions <- function(p_treat = NA,
   }
 
   if (test == "noninferiority/superiority" & design == "parallel") {
-    z.alpha <-  qnorm(alpha, mean = 0, sd = 1)
-    z.beta <- qnorm(1 - power, mean = 0, sd = 1)
+    z.alpha <-  stats::qnorm(alpha, mean = 0, sd = 1)
+    z.beta <- stats::qnorm(1 - power, mean = 0, sd = 1)
 
     n_control <- (p_treat * (1 - p_treat)/kappa +
                             p_control * (1 - p_control)) * ((z.alpha + z.beta)/(p_treat - p_control - delta))^2

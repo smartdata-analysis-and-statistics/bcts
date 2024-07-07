@@ -72,7 +72,7 @@ eval_bcts <- function(n_per_arm_int = 20,
                     n.adapt = n.adapt, perc_burnin = perc_burnin, progress.bar = progress.bar)
 
   ## Get quantiles of final sample size
-  n_fin_qt <- quantile(sim_power$simresults$n_per_arm_fin, c(slevel/2, 1 - (slevel/2)))
+  n_fin_qt <- stats::quantile(sim_power$simresults$n_per_arm_fin, c(slevel/2, 1 - (slevel/2)))
 
   n_arm_dropped <- length(mu_t) - 1
 
