@@ -3,15 +3,15 @@ library(dplyr)
 
 source("R/simulation.r")
 
-#' Estimate the Power for Difference between Two Means
-#' The probability of success conditional on an assumed true treatment effect
-#' @param n1
-#' @param mu1
-#' @param mu2
-#' @param margin
-#' @param sd1
-#' @param sd2
-#' @param kappa
+#' Estimate the Power for the Difference between Two Means
+#' @param n1 Number of observations in treatment group 1
+#' @param n2 Number of observations in treatment group 2
+#' @param N Total sample size at final analysis (for calculating PPoS)
+#' @param mu1 Expected mean in treatment group 1
+#' @param mu2 Expected mean in treatment group 2
+#' @param margin Margin for deciding superiority/non-inferiority
+#' @param sd1 Standard deviation of the outcome in treatment group 1
+#' @param sd2 Standard deviation of the outcome in treatment group 2
 #' @param alpha
 #' @param alternative
 #'
@@ -23,27 +23,34 @@ source("R/simulation.r")
 #' @export
 #'
 #' @examples
-pow_diff_means <- function(n1, # Sample size for the control arm
-                             mu1, # Active treatment
-                             mu2, # Control treatment
-                             margin = 0, #non-inferiority/superiority margin
+pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
                              sd1,
                              sd2,
-                             kappa = 1, # allocation ratio for the active treatment (n1/n2)
                              alpha = 0.05,
                              alternative = "superiority") {
-
-  n2 <- ceiling(n1 / kappa)
 
   # calculate pooled SD
   sd_pooled <- sqrt(((n1 - 1)*sd1**2 + (n2 - 1)*sd2**2)/(n1 + n2 - 2))
 
+  # Calculate pooled SE
+  se_pooled <- sd_pooled * sqrt(1/n1 + 1/n2)
+
+  # Calculate allocation ratio
+  alr <- n1/n2
+  r <- sqrt(((alr + 1)^2) / alr)
+
+  # Calculate total sample size for which observations are available
+  n <- n1 + n2
 
   if (alternative == "superiority") {
-    z_test <- (mu1 - mu2 - margin)/(sd_pooled * sqrt(1/n1 + 1/n2))
-    z_alpha <- qnorm(1 - alpha)
+    z_test <- (mu1 - mu2 - margin)/se_pooled
+    z_crit <- qnorm(1 - alpha)
 
-    power <- pnorm(z_test - z_alpha)
+    power <- pnorm(z_test - z_crit)
+
+    # Calculate Predictive Power of success (PPoS)
+    ppos <- pnorm((1/(r*sd_pooled))*sqrt(n/(N-n))* ((mu1 - mu2 - margin)*sqrt(N)-r*sd_pooled*z_crit))
+
 
     str_out <- "Difference between Two means\n"
     str_out <- paste0(str_out, "(Test for Noninferority/Superiority)\n")
@@ -54,7 +61,8 @@ pow_diff_means <- function(n1, # Sample size for the control arm
     str_out <- paste0(str_out, " n1 = ", n1, "\n")
     str_out <- paste0(str_out, " n2 = ", n2, "\n")
 
-    out <- list(power = power, txt = str_out)
+    out <- list(power = power, ppos = ppos, z_test = z_test, I = 1/(se_pooled**2),
+                sign = z_test > z_crit, txt = str_out)
     return(out)
   }
 }
@@ -539,7 +547,6 @@ eval_superiority <- function(data,
 
   for (treat in treatments[treatments != 1]) {
     mudiff <- psample_int %>% pull(paste0("trteff[", treat, "]"))
-    sigma_t <- mean(psample_int %>% pull(paste0("sigma[", treat, "]")))
     PPOS <- psample_int %>% pull(paste0("ppos[", treat, "]"))
     trtc <-  (data %>% filter(trt == treat) %>% pull(Treatment))[1]
     n <-  nrow(data %>% filter(trt %in% c(1, treat) & !is.na(Y)))
@@ -548,15 +555,12 @@ eval_superiority <- function(data,
     # Evaluate significance using frequentist method
     Yc <- data %>% filter(trt == 1 & !is.na(Y)) %>% pull(Y)
     Yt <- data %>% filter(trt == treat & !is.na(Y)) %>% pull(Y)
-    sepooled <- sqrt(var(Yc)/length(Yc) + var(Yt)/length(Yt))
-    sdpooled <- sqrt((sigma_t**2 + sigma_c**2)/2)
-    z_freq <- (mean(Yt) - mean(Yc))/sepooled
 
-    alr <- length(Yt)/length(Yc) # Allocation ratio
-    r <- sqrt(((alr + 1)^2) / alr)
-
-    # Calculate Predictive Power of success (PPoS)
-    pposb_approx <- pnorm((1/(r*sdpooled))*sqrt(n/(N-n))* ((mean(mudiff)-margin)*sqrt(N)-r*sdpooled*z_crit))
+    test_freq <- pow_diff_means(n1 = length(Yt), n2 = length(Yc), N = N,
+                                mu1 = mean(Yt), mu2 = mean(Yc), margin = 0,
+                                sd1 = sd(Yt), sd2  = sd(Yc),
+                                alpha = 1 - gamma,
+                                alternative = "superiority")
 
     trt_est <- trt_est %>% add_row(data.frame("Treatment" = trtc,
                                               "trt" = as.numeric(treat),
@@ -567,13 +571,13 @@ eval_superiority <- function(data,
                                               "est_upper" = quantile(mudiff, gamma),
                                               "est_se" = sd(mudiff),
                                               "zb" = mean(mudiff)/sd(mudiff),
-                                              "zf" = z_freq,
+                                              "zf" = test_freq$z_test,
                                               "Ib" = 1/var(mudiff),
-                                              "If" = 1/(sepooled**2),
+                                              "If" = test_freq$I,
                                               "sigb" = quantile(mudiff, (1 - gamma)) > 0,
-                                              "sigf" = z_freq > z_crit,
+                                              "sigf" = test_freq$sign,
                                               "pposb_mcmc" = mean(PPOS),
-                                              "pposb_approx" = pposb_approx))
+                                              "pposb_approx" = test_freq$ppos))
   }
 
   # Assign the dynamic column names
