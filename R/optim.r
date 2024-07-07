@@ -150,6 +150,13 @@ uniroot <- function(f,
 
 }
 
+#' Print result from optimization
+#'
+#' @param x An object of class "optss"
+#' @param ... Optional arguments
+#'
+#' @export
+#'
 print.optss <- function(x, ...) {
 
   cat(paste("Design parameters for a 1 stage trial with ",

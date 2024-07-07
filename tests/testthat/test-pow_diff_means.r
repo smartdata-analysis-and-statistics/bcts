@@ -3,10 +3,7 @@ test_that("Test type-I error control frequentist analysis", {
   alpha <- 0.05
   nC <- nT <- 100
   N <- 500
-
-  sig = rep(NA, nsim)
-
-  z_crit <- qnorm(1 - alpha)
+  sig <- rep(FALSE, nsim)
 
   for (i in 1:nsim) {
 
@@ -19,10 +16,7 @@ test_that("Test type-I error control frequentist analysis", {
                            sd1 = sd(Yt), sd2 = sd(Yc),
                            alpha = alpha, alternative = "superiority")
 
-
-    #sepooled <- sqrt(var(Yc)/length(Yc) + var(Yt)/length(Yt))
-    #z_freq <- (mean(Yt) - mean(Yc))/sepooled
-    sig[i] <- test$sign
+    sig[i] <- test$rejectH0
   }
 
   type1.ci <- binom.confint(sum(sig), n = nsim, conf.level = 0.95, methods = "exact")

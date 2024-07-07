@@ -12,22 +12,23 @@ source("R/simulation.r")
 #' @param margin Margin for deciding superiority/non-inferiority
 #' @param sd1 Standard deviation of the outcome in treatment group 1
 #' @param sd2 Standard deviation of the outcome in treatment group 2
-#' @param alpha
+#' @param alpha One-sided alpha
 #' @param alternative
 #'
 #' @description
 #' For superiority, H0 is defined as mu1 - mu2 <= margin.
 #'
 #'
-#' @return
-#' @export
+#' @return An object of class "fpower"
 #'
-#' @examples
 pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
                              sd1,
                              sd2,
-                             alpha = 0.05,
+                             alpha,
                              alternative = "superiority") {
+
+  # Calculate difference
+  mudiff <- mu1 - mu2 - margin
 
   # calculate pooled SD
   sd_pooled <- sqrt(((n1 - 1)*sd1**2 + (n2 - 1)*sd2**2)/(n1 + n2 - 2))
@@ -46,6 +47,7 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
     z_test <- (mu1 - mu2 - margin)/se_pooled
     z_crit <- qnorm(1 - alpha)
 
+    # Calculate the probability that mu1 - mu2 - margin > 0
     power <- pnorm(z_test - z_crit)
 
     # Calculate Predictive Power of success (PPoS)
@@ -61,157 +63,18 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
     str_out <- paste0(str_out, " n1 = ", n1, "\n")
     str_out <- paste0(str_out, " n2 = ", n2, "\n")
 
-    out <- list(power = power, ppos = ppos, z_test = z_test, I = 1/(se_pooled**2),
-                sign = z_test > z_crit, txt = str_out)
+    out <- list(diff = mudiff,
+                diff_lower = mudiff + qnorm(alpha) * se_pooled,
+                diff_upper = mudiff + qnorm(1 - alpha) * se_pooled,
+                diff_se = se_pooled,
+                power = power, ppos = ppos, Z_test = z_test, Z_crit = z_crit,
+                I = 1/(se_pooled**2),
+                rejectH0 = z_test > z_crit, txt = str_out)
+    class(out) <- "fpower"
     return(out)
   }
 }
 
-
-#' Title
-#'
-#' @param n_0
-#' @param mu
-#' @param sd
-#' @param arm_names
-#' @param delta
-#' @param tar
-#' @param alpha
-#' @param power  Choose between "marginal", "disjunctive" or "conjunctive"
-#' @param adjust alpha adjustment ( "bon","sid","no")
-#' @param nsim
-#'
-#' @return
-#' @export
-#'
-#' @examples
-mcmc_power_diff_means <- function(n_0, # Sample size for the control arm
-                             mu = c(0, 0, 0), # expected effect sizes
-                             sd = c(1, 1, 1), # expected SD
-                             arm_names = NULL,
-                             delta = 0, #non-inferiority/superiority margin
-                             tar = NULL, # Vector with allocation ratios
-                             alpha = 0.05,
-                             power = "marginal",
-                             adjust = "bon", # multiple comparison correction (MCC)
-                             nsim = 10000) {
-
-  n_0 <- ifelse(n_0 < 1, 1, ceiling(n_0))
-  K <- length(mu) - 1 # Number of active arms
-
-  if (is.null(adjust)) {
-    adjust <- "no"
-  }
-  if (is.null(arm_names)) {
-    # Specify treatment names
-    arm_names <- c("control", paste0("treatment_", seq(K)))
-  }
-  if (is.null(tar)) {
-    tar <- rep(1, (K + 1))
-  }
-  n <- n_0 * tar
-  names(n) <- arm_names
-
-  # Determine the significance level
-  if (K == 1) {
-    if (adjust != "no") message("No correction for multiplicity is needed and thus will not be applied!")
-    gamma <- alpha
-  } else if (adjust == "bon") {
-    gamma <- alpha/K
-  } else if (adjust == "sid") {
-    gamma <- 1 - (1 - alpha)^(1/K)
-  } else {
-    if (adjust == "none") warning("No correction for multiplicity was specified!")
-    gamma <- alpha
-  }
-
-  p_k <- z_k <- sign <- matrix(data = NA, nrow = nsim, ncol = K)
-
-  for (i in seq(nsim)) {
-    y <- list()
-    ybar <- rep(NA, (K + 1))
-    for (k in seq(K + 1)) {
-      y[[k]] <- rnorm(n = n[k], mean = mu[k], sd = sd[k])
-      ybar[k] <- mean(y[[k]]) # Observed mean response
-
-      # For each active treatment, make a comparison to the control treatment
-      if (k > 1) {
-
-        if (sd[k] == sd[1]) {
-          I_k <- 1/((var(y[[1]])/n[1]) + (var(y[[k]])/n[k]))
-          z_k[i, (k - 1)] <- (ybar[k] - ybar[1] - delta)*sqrt(I_k)
-        } else {
-          # Error variance of the observed response probabilities
-          var_pooled <- (1/(n[1] + n[k] - 2)) * (sum((y[[1]] - ybar[1])**2) + sum((y[[k]] - ybar[k])**2))
-
-          # Derive the z-score
-          z_k[i, (k - 1)] <- (ybar[k] - ybar[1] - delta)/(sqrt(var_pooled)*sqrt(1/n[1] + 1/n[k]))
-        }
-
-        # Derive the p-value
-        p_k[i, (k - 1)] <-  pnorm(z_k[i, (k - 1)], mean = 0, sd = 1, lower.tail = FALSE)
-
-        # Determine whether to reject H0
-        sign[i, (k - 1)] <- ifelse(z_k[i, (k - 1)] > qnorm(1 - gamma),1, 0)
-      }
-    }
-  }
-
-  # Check for each simulation how many hypotheses were rejected
-  n_sign <-  rowSums(sign)
-  n_sign_per_comparison <- colSums(sign)/nsim
-  names(n_sign_per_comparison) <- arm_names[-1]
-
-  # Estimate each power
-  powers <- data.frame(matrix(NA, nrow = 1, ncol = K + 2))
-  colnames(powers) <- c("disjunctive", "conjunctive", paste0("marginal_", arm_names[-1]))
-
-  powers$disjunctive <- sum(n_sign > 0)/nsim
-  powers$conjunctive = sum(n_sign == K)/nsim
-
-  act_trt <- arm_names[-1]
-
-  for (k in 1:K) {
-    powers[1,paste0("marginal_", act_trt[k])] <- n_sign_per_comparison[k]
-  }
-
-  # Case evaluation to assign the value of power
-  est.power <- case_when(
-    power == "marginal" ~ min(n_sign_per_comparison),
-    power == "disjunctive" ~ powers$disjunctive,
-    power == "conjunctive" ~ powers$conjunctive,
-    TRUE ~ NA_real_ # Default case if none of the above matches
-  )
-
-  dat <- data.frame(z_k)
-  names(dat) <- paste0("z_",arm_names[-1])
-
-  out <- list(power = est.power,
-              powers = powers,
-              n_0 = n_0,
-              n = n,
-              N = sum(n),
-              K = K, # Number of active treatments
-              alpha = alpha,
-              power_type = power,
-              p_crit = gamma,
-              adjust = adjust,
-              z_test_lower = qnorm(1 - gamma))
-  return(out)
-}
-
-
-
-n_diff_means <- function(mu, sd, delta, alpha, beta, power_type, adjust) {
-  uniroot(function(x) (mcmc_power_diff_means(n_0 = x,
-                                        mu = mu,
-                                        sd = sd,
-                                        delta = delta,
-                                        adjust = adjust,
-                                        power = power_type,
-                                        alpha = alpha)),
-          beta = beta)
-}
 
 
 #' Bayesian clinical trial simulation (BCTS)
@@ -229,8 +92,8 @@ n_diff_means <- function(mu, sd, delta, alpha, beta, power_type, adjust) {
 #' @param th.fut Futility threshold for the predictive power calculated conditioned on the interim data
 #' @param th.eff Efficacy threshold for the predictive power calculated conditioned on the interim data
 #' @param th.prom Predictive power threshold that would trigger sample size increase
+#' @param method Method to estimate the power. Choose "bayes" for a fully Bayesian approach or "mcmc" for a frequentist approximation.
 #' @param nsim Number of trials to simulate (default: 1000)
-#' @param nsim.ppos  Number of simulations to assess PPOS (set to 0 to use approximation)
 #' @param num_chains Number of MCMC chains
 #' @param n.iter Number of MCMC iterations for estimation
 #' @param n.adapt Number of MCMC iterations for adaptation
@@ -243,7 +106,7 @@ n_diff_means <- function(mu, sd, delta, alpha, beta, power_type, adjust) {
 #' i.e. $Pr(\mu_t - \mu_c > 0|D) > $\gamm$)$.
 #'
 #'
-#' @return
+#' @return An object of class "bcts"
 #' @export
 #'
 bcts <- function(n_per_arm_int = 20,
@@ -259,6 +122,7 @@ bcts <- function(n_per_arm_int = 20,
                  th.fut = 0.2, ##
                  th.eff = 0.9, ##
                  th.prom = 0.5, ##
+                 method = "mcmc",
                  nsim = 1000, # no. of simulatoins at trial start
                  num_chains = 4,
                  n.iter = 5000, #
@@ -301,7 +165,7 @@ bcts <- function(n_per_arm_int = 20,
                            n_per_arm_fin = NA,
                            sig_fin = NA)
 
-  results_interim <- results_final <- results_max <- data.frame(sim = numeric(),
+  results_interim <- results_final <- data.frame(sim = numeric(),
                            Treatment = character(),
                            trt = numeric(),
                            n = numeric(),
@@ -310,21 +174,15 @@ bcts <- function(n_per_arm_int = 20,
                            est = numeric(),
                            est_upper = numeric(),
                            est_se = numeric(),
-                           zb = numeric(),
-                           zf = numeric(),
-                           Ib = numeric(),
-                           If = numeric(),
-                           sigb = numeric(),
-                           sigf = numeric(),
-                           pposb_mcmc = numeric(),
-                           pposb_approx = numeric())
+                           Z_test = numeric(),
+                           Z_crit = numeric(),
+                           I = numeric(),
+                           rejectH0 = logical(),
+                           ppos = numeric())
   names(results_interim)[names(results_interim) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
   names(results_interim)[names(results_interim) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
   names(results_final)[names(results_final) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
   names(results_final)[names(results_final) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
-  names(results_max)[names(results_max) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
-  names(results_max)[names(results_max) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
-
 
   if (progress.bar == "text") {
     pb <- txtProgressBar(min = 0, max = nsim, initial = 0)
@@ -341,36 +199,25 @@ bcts <- function(n_per_arm_int = 20,
                               trtnames = trt_names,
                               block.sizes = block.sizes)
 
-    result_max <- eval_superiority(dat_max,
-                                   margin = 0, # Superiority margin
-                                   gamma = gamma, num_chains = num_chains,
-                                   n.adapt = n.adapt, n.iter = n.iter,
-                                   perc_burnin = perc_burnin)
-
-    results_max <- results_max %>% add_row(cbind(sim = i, result_max))
 
     # Evaluate PPOS at the planned sample size
     dat_pln <- dat_max %>% slice_head(n = n_per_arm_pln*n_arms) %>%
       mutate(Y = ifelse(id > n_per_arm_int*n_arms, NA, Y))
 
-    result_pln <- eval_superiority(dat_pln,
-                                   margin = 0, # Superiority margin
-                                   gamma = gamma, num_chains = num_chains,
+    result_pln <- eval_superiority(dat_pln, margin = 0, gamma = gamma,
+                                   method = method, num_chains = num_chains,
                                    n.adapt = n.adapt, n.iter = n.iter,
                                    perc_burnin = perc_burnin)
 
     results_interim <- results_interim %>% add_row(cbind(sim = i, result_pln))
 
-
-
-
-    if (max(result_pln$pposb_mcmc) < th.fut) {
+    if (max(result_pln$ppos) < th.fut) {
       simresults$fut.trig[i] <- TRUE
       simresults$inc.ss[i] <- FALSE
       simresults$n_per_arm_fin[i] <- n_per_arm_pln
-      simresults$sel.dose[i] <- result_pln$trt[order(result_pln$pposb_mcmc, decreasing = TRUE)[1]]
-      simresults$sel.dose.ppos[i] <- result_pln$pposb_mcmc[order(result_pln$pposb_mcmc, decreasing = TRUE)[1]]
-    } else if (max(result_pln$pposb_mcmc) >= th.prom & max(result_pln$pposb_mcmc) < th.eff) {
+      simresults$sel.dose[i] <- result_pln$trt[order(result_pln$ppos, decreasing = TRUE)[1]]
+      simresults$sel.dose.ppos[i] <- result_pln$ppos[order(result_pln$ppos, decreasing = TRUE)[1]]
+    } else if (max(result_pln$ppos) >= th.prom & max(result_pln$ppos) < th.eff) {
       simresults$fut.trig[i] <- FALSE
       simresults$inc.ss[i] <- TRUE
 
@@ -380,36 +227,35 @@ bcts <- function(n_per_arm_int = 20,
                               trt = numeric(),
                               n = numeric(),
                               N = numeric(),
-                              pposb_mcmc = numeric(),
-                              pposb_approx = numeric())
+                              ppos = numeric())
 
       for (n_per_arm_new in (n_per_arm_pln + 1):n_per_arm_max) {
 
         dat_pln_new <- dat_max %>% slice_head(n = n_per_arm_new*n_arms) %>%
           mutate(Y = ifelse(id > n_per_arm_int*n_arms, NA, Y))
 
-        result_pln_new <- eval_superiority(dat_pln_new,
-                                           margin = 0, # Superiority margin
-                                           gamma = gamma, num_chains = num_chains,
+        result_pln_new <- eval_superiority(data = dat_pln_new, margin = 0,
+                                           gamma = gamma, method = method,
+                                           num_chains = num_chains,
                                            n.adapt = n.adapt, n.iter = n.iter,
                                            perc_burnin = perc_burnin)
 
-        ppos_by_n <- ppos_by_n %>% add_row(cbind(n_per_arm_new, result_pln_new %>% select(Treatment, trt, n, N, pposb_mcmc, pposb_approx)))
+        ppos_by_n <- ppos_by_n %>% add_row(cbind(n_per_arm_new, result_pln_new %>% select(Treatment, trt, n, N, ppos)))
       }
 
       # Select the lowest sample size resulting in a PPOS >= th.eff
-      filtered_ppos <- subset(ppos_by_n, pposb_mcmc >= th.eff)
+      filtered_ppos <- subset(ppos_by_n, ppos >= th.eff)
 
       if (nrow(filtered_ppos) > 0) {
         sel_row <- filtered_ppos[which.min(filtered_ppos$n_per_arm_new),]
         simresults$sel.dose[i] <- sel_row$trt
-        simresults$sel.dose.ppos[i] <- sel_row$pposb_mcmc
+        simresults$sel.dose.ppos[i] <- sel_row$ppos
         simresults$n_per_arm_fin[i] <- sel_row$n_per_arm_new
       } else {
         # Increasing the sample size did not help to attain target power
         # Keep the maximum sample size
-        simresults$sel.dose[i] <- result_pln$trt[order(result_pln$pposb_mcmc, decreasing = TRUE)[1]]
-        simresults$sel.dose.ppos[i] <- result_pln$pposb_mcmc[order(result_pln$pposb_mcmc, decreasing = TRUE)[1]]
+        simresults$sel.dose[i] <- result_pln$trt[order(result_pln$ppos, decreasing = TRUE)[1]]
+        simresults$sel.dose.ppos[i] <- result_pln$ppos[order(result_pln$ppos, decreasing = TRUE)[1]]
         simresults$n_per_arm_fin[i] <- n_per_arm_max
       }
     } else {
@@ -420,12 +266,12 @@ bcts <- function(n_per_arm_int = 20,
       # If both predictive powers exceed 0.9 then
       # choose Low dose otherwise choose the dose with higher
       # predictive power
-      if (sum((result_pln$pposb_mcmc >= th.eff)) >= 2 & prioritize_low_trteff) {
-        simresults$sel.dose[i] <- result_pln$trt[order(mu_t[which(result_pln$pposb_mcmc >= th.eff)], decreasing = FALSE)[1]]
-        simresults$sel.dose.ppos[i] <- result_pln$pposb_mcmc[order(mu_t[which(result_pln$pposb_mcmc >= th.eff)], decreasing = FALSE)[1]]
+      if (sum((result_pln$ppos >= th.eff)) >= 2 & prioritize_low_trteff) {
+        simresults$sel.dose[i] <- result_pln$trt[order(mu_t[which(result_pln$ppos >= th.eff)], decreasing = FALSE)[1]]
+        simresults$sel.dose.ppos[i] <- result_pln$ppos[order(mu_t[which(result_pln$ppos >= th.eff)], decreasing = FALSE)[1]]
       } else {
-        simresults$sel.dose[i] <- result_pln$trt[order(result_pln$pposb_mcmc, decreasing = TRUE)[1]]
-        simresults$sel.dose.ppos[i] <- result_pln$pposb_mcmc[order(result_pln$pposb_mcmc, decreasing = TRUE)[1]]
+        simresults$sel.dose[i] <- result_pln$trt[order(result_pln$ppos, decreasing = TRUE)[1]]
+        simresults$sel.dose.ppos[i] <- result_pln$ppos[order(result_pln$ppos, decreasing = TRUE)[1]]
       }
     }
 
@@ -433,15 +279,14 @@ bcts <- function(n_per_arm_int = 20,
     dat_fin <- dat_max %>% filter(trt %in% c(1,simresults$sel.dose[i])) %>%
       slice_head(n = simresults$n_per_arm_fin[i]*2)
 
-    result_fin <- eval_superiority(dat_fin,
-                                   margin = 0, # Superiority margin
-                                   gamma = gamma, num_chains = num_chains,
+    result_fin <- eval_superiority(data = dat_fin, margin = 0, gamma = gamma,
+                                   method = method, num_chains = num_chains,
                                    n.adapt = n.adapt, n.iter = n.iter,
                                    perc_burnin = perc_burnin)
 
     results_final <- results_final %>% add_row(cbind(sim = i, result_fin))
 
-    simresults$sig_fin[i] <- result_fin %>% pull(sigb)
+    simresults$sig_fin[i] <- result_fin %>% pull(rejectH0)
 
     if (progress.bar == "text") {
       setTxtProgressBar(pb, i)
@@ -466,7 +311,6 @@ bcts <- function(n_per_arm_int = 20,
               sel.high = binom.confint(x = sum(simresults$sel.dose == trt_high), n = nsim, methods = "exact"),
               simresults = simresults,
               results_interim = results_interim,
-              results_max = results_max,
               results_final = results_final
               )
 
@@ -481,10 +325,10 @@ bcts <- function(n_per_arm_int = 20,
 #' @param data Trial data
 #' @param margin Superiority margin (default: 0)
 #' @param gamma Level to declare success (default: 0.975)
-#' @param num_chains
-#' @param n.adapt
-#' @param n.iter
-#' @param perc_burnin
+#' @param num_chains The number of parallel chains for the model
+#' @param n.adapt The number of iterations for adaptation.
+#' @param n.iter 	The number of iterations to monitor
+#' @param perc_burnin The percentage of iterations to keep for burn-in
 #'
 #' @description
 #' Superiority is established if Pr(mean(treat)-mean(control)>margin) > gamma
@@ -493,18 +337,32 @@ bcts <- function(n_per_arm_int = 20,
 #' O’Hagan A, Stevens JW, Campbell MJ. Assurance in clinical trial design. Pharmaceut Statist. 2005 Jul;4(3):187–201.
 #'
 #'
-#' @return
-#' @export
+#' @return A dataframe with results from the evaluation
 #'
-#' @examples
 eval_superiority <- function(data,
                              margin, #,
                              gamma, #0.975
-                             num_chains,
-                             n.adapt, n.iter, perc_burnin) {
+                             method,
+                             num_chains = 4,
+                             n.adapt = 500, n.iter = 1000, perc_burnin = 0.2) {
+
+  if (method == "bayes") {
+    result <- eval_superiority_bayes(data = data, margin = margin, gamma = gamma,
+                                     num_chains = num_chains, n.adapt = n.adapt,
+                                     n.iter = n.iter, perc_burnin = perc_burnin)
+  } else if (method == "mcmc") {
+    result <- eval_superiority_mcmc(data = data, margin = margin, gamma = gamma)
+  } else {
+    stop("Unknown method. Please use 'bayes' or 'mcmc'.")
+  }
+
+  return(result)
+}
+
+
+eval_superiority_bayes <- function(data, margin, gamma, num_chains, n.adapt, n.iter, perc_burnin) {
 
   treatments <- unique(data$trt)
-  z_crit <- qnorm(gamma)
 
   jags.config <- prepare_jags_ppos(dat = data, gamma = gamma)
 
@@ -526,7 +384,6 @@ eval_superiority <- function(data,
 
   ## Derive posterior distributions at interim
   psample_int <- as.data.frame(do.call(rbind, fit_jags_int))
-  sigma_c <- mean(psample_int %>% pull(paste0("sigma[1]")))
 
   trt_est <- data.frame("Treatment" = character(),
                         "trt" = numeric(),
@@ -536,14 +393,11 @@ eval_superiority <- function(data,
                         "est" = numeric(),
                         "est_upper"  = numeric(),
                         "est_se" = numeric(), # Standard error of the mean
-                        "zb" = numeric(),
-                        "zf" = numeric(),
-                        "Ib" = numeric(), # Information level
-                        "If" = numeric(), # Information level
-                        "sigb" = numeric(), # Significance level of "est"
-                        "sigf" = numeric(), # Significance level of "est"
-                        "pposb_mcmc" = numeric(),
-                        "pposb_approx" = numeric())  # Trial success based on observed data (i.e.,)
+                        "Z_test" = numeric(),
+                        "Z_crit" = numeric(),
+                        "I" = numeric(), # Information level
+                        "rejectH0" = logical(), # Reject H0?
+                        "ppos" = numeric())  # Trial success based on observed data (i.e.,)
 
   for (treat in treatments[treatments != 1]) {
     mudiff <- psample_int %>% pull(paste0("trteff[", treat, "]"))
@@ -552,7 +406,50 @@ eval_superiority <- function(data,
     n <-  nrow(data %>% filter(trt %in% c(1, treat) & !is.na(Y)))
     N <-  nrow(data %>% filter(trt %in% c(1, treat)))
 
-    # Evaluate significance using frequentist method
+    trt_est <- trt_est %>% add_row(data.frame("Treatment" = trtc,
+                                              "trt" = as.numeric(treat),
+                                              "n" = n,
+                                              "N" = N,
+                                              "est_lower" = quantile(mudiff, 1 - gamma),
+                                              "est" = mean(mudiff),
+                                              "est_upper" = quantile(mudiff, gamma),
+                                              "est_se" = sd(mudiff),
+                                              "Z_test" = mean(mudiff)/sd(mudiff),
+                                              "Z_crit" = qnorm(gamma),
+                                              "I" = 1/var(mudiff),
+                                              "rejectH0" = quantile(mudiff, (1 - gamma)) > 0,
+                                              "ppos" = mean(PPOS)))
+  }
+
+  # Assign the dynamic column names
+  names(trt_est)[names(trt_est) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
+  names(trt_est)[names(trt_est) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
+
+  return(trt_est)
+}
+
+eval_superiority_mcmc <- function(data, margin, gamma) {
+
+  treatments <- unique(data$trt)
+
+  trt_est <- data.frame("Treatment" = character(),
+                        "trt" = numeric(),
+                        "n" = numeric(),
+                        "N" = numeric(),
+                        "est_lower" = numeric(),
+                        "est" = numeric(),
+                        "est_upper"  = numeric(),
+                        "est_se" = numeric(), # Standard error of the mean
+                        "Z_test" = numeric(),
+                        "Z_crit" = numeric(),
+                        "I" = numeric(), # Information level
+                        "rejectH0" = logical(), # Reject H0?
+                        "ppos" = numeric())  # Trial success based on observed data (i.e.,)
+
+  for (treat in treatments[treatments != 1]) {
+    trtc <-  (data %>% filter(trt == treat) %>% pull(Treatment))[1]
+    n <-  nrow(data %>% filter(trt %in% c(1, treat) & !is.na(Y)))
+    N <-  nrow(data %>% filter(trt %in% c(1, treat)))
     Yc <- data %>% filter(trt == 1 & !is.na(Y)) %>% pull(Y)
     Yt <- data %>% filter(trt == treat & !is.na(Y)) %>% pull(Y)
 
@@ -566,100 +463,25 @@ eval_superiority <- function(data,
                                               "trt" = as.numeric(treat),
                                               "n" = n,
                                               "N" = N,
-                                              "est_lower" = quantile(mudiff, 1 - gamma),
-                                              "est" = mean(mudiff),
-                                              "est_upper" = quantile(mudiff, gamma),
-                                              "est_se" = sd(mudiff),
-                                              "zb" = mean(mudiff)/sd(mudiff),
-                                              "zf" = test_freq$z_test,
-                                              "Ib" = 1/var(mudiff),
-                                              "If" = test_freq$I,
-                                              "sigb" = quantile(mudiff, (1 - gamma)) > 0,
-                                              "sigf" = test_freq$sign,
-                                              "pposb_mcmc" = mean(PPOS),
-                                              "pposb_approx" = test_freq$ppos))
+                                              "est_lower" = test_freq$diff_lower,
+                                              "est" = test_freq$diff,
+                                              "est_upper" = test_freq$diff_upper,
+                                              "est_se" = test_freq$diff_se,
+                                              "Z_test" = test_freq$Z_test,
+                                              "Z_crit" = test_freq$Z_crit,
+                                              "I" = test_freq$I,
+                                              "rejectH0" = test_freq$rejectH0,
+                                              "ppos" = test_freq$ppos))
   }
 
   # Assign the dynamic column names
   names(trt_est)[names(trt_est) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
   names(trt_est)[names(trt_est) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
 
-
   return(trt_est)
 }
 
 
-
-bpower_diff_means <- function(n_c,
-                              n_t,
-                              mu_c,
-                              mu_t,
-                              dgen_priorsd_mu_c = 0, # Data generation prior for mu_c (choose 0 for a frequentist approach)
-                              dgen_priorsd_mu_t = 0,
-                              sd_c,
-                              sd_t,
-                              gamma = 0.975, # Probability needed to declare success
-                              nsim = 1000, #
-                              num_chains = 4,
-                              n.iter = 5000, #
-                              n.adapt = 500,
-                              perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
-                              progress.bar = "text", #
-                              model_dir = ".") {
-
-  require(rjags)
-
-
-  pb <- txtProgressBar(min = 0, max = nsim, initial = 0)
-  trteff_pos <- rep(NA, nsim)
-
-  # Sample the "True" treatment effect for each simulation
-  sim_mu_c <- rnorm(nsim, mean = mu_c, sd = dgen_priorsd_mu_c)
-  sim_mu_t <- rnorm(nsim, mean = mu_t, sd = dgen_priorsd_mu_t)
-
-  for (i in 1:nsim) {
-    Y_c <- rnorm(n_c, mean = sim_mu_c[i], sd = sd_c)
-    Y_t <- rnorm(n_t, mean = sim_mu_t[i], sd = sd_t)
-
-    # Estimate error variance
-    evar_c <- var(Y_c)/n_c
-    evar_t <- var(Y_t)/n_t
-
-    jags_data <- list(mean_c = mean(Y_c),
-                      mean_t = mean(Y_t),
-                      tau_c = 1/evar_c,
-                      tau_t = 1/evar_t)
-
-    # Parameters to monitor
-    params <- c("trteff")
-
-    # Analyse the interim data
-    jags_model_int <- jags.model(file = file.path(model_dir, "inst/jags/diff_means_twoarm.jags"),
-                                 data = jags_data,
-                                 n.chains = num_chains,
-                                 n.adapt = n.adapt,
-                                 quiet = TRUE)
-
-    ##Burnin stage
-    update(jags_model_int, n.iter = ceiling(n.iter*perc_burnin), progress.bar = "none")
-
-    ##Sampling after burnin
-    fit_jags_int <- coda.samples(jags_model_int, params,
-                                 n.iter = floor(n.iter*(1 - perc_burnin)),
-                                 progress.bar = "none")
-
-    ## Derive posterior distributions at interim
-    psample_int <- as.data.frame(do.call(rbind, fit_jags_int))
-
-    trteff_pos[i] <- quantile(psample_int %>% pull("trteff"), 1 - gamma) > 0
-    setTxtProgressBar(pb,i)
-  }
-  close(pb)
-
-  PoS <- mean(trteff_pos)
-
-  return(PoS)
-}
 
 prepare_jags_ppos <- function(dat, gamma) {
   model_string <- "model {\n"

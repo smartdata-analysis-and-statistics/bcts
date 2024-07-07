@@ -15,17 +15,16 @@
 #' @source
 #' Chow SC, Shao J Wang, Hansheng, Lokhnygina Y. Sample size calculations in clinical research. 2018.
 #'
-#' @example
+#' @examples
 #' N_two_sample_proportions(p_treat = 0.8,
 #'                          p_control = 0.8,
 #'                          delta = -0.20,
 #'                          kappa = 1,
 #'                          alpha = 0.05,
 #'                          power = 0.80)
-#' @return
+#' @return A list
 #' @export
-#'
-#' @examples
+
 N_two_sample_proportions <- function(p_treat = NA,
                                      p_control = NA,
                                      delta = 0,
@@ -68,18 +67,16 @@ N_two_sample_proportions <- function(p_treat = NA,
 
 #' Calculate the power for Fisher Test
 #'
-#' @param n_control
-#' @param p_treat
-#' @param p_control
-#' @param delta
-#' @param tar
-#' @param alpha
+#' @param n_control Number of patients in the control group
+#' @param p_treat Expected proportion in the treated group
+#' @param p_control Expected proportion in the control group
+#' @param delta Margin
+#' @param tar Treatment allocation ratio
+#' @param alpha Alpha
 #' @param nsim Number of simulations to conduct
 #'
-#' @return
+#' @return List with result
 #' @export
-#'
-#' @examples
 power_fisher <- function(n_control,
                          p_treat = NA,
                          p_control = NA,

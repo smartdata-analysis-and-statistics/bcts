@@ -37,6 +37,7 @@ eval_bcts <- function(n_per_arm_int = 20,
                    sd_t = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
                    prioritize_low_trteff = TRUE,
                    gamma = 0.98, #   %
+                   method = "mcmc",
                    th.fut = 0.2, ##
                    th.eff = 0.9, ##
                    th.prom = 0.5, ##
@@ -55,6 +56,7 @@ eval_bcts <- function(n_per_arm_int = 20,
                     n_per_arm_max = n_per_arm_max, block.sizes = block.sizes,
                     mu_c = 0, sd_c = sd_c, mu_t = mu_t_type1, sd_t = sd_t, #
                     prioritize_low_trteff = prioritize_low_trteff, gamma = gamma, #   %
+                    method = method,
                     th.fut = th.fut, th.eff = th.eff, th.prom = th.prom, ##
                     nsim = nsim, num_chains = num_chains, n.iter = n.iter, #
                     n.adapt = n.adapt, perc_burnin = perc_burnin, progress.bar = progress.bar)
@@ -64,6 +66,7 @@ eval_bcts <- function(n_per_arm_int = 20,
                     n_per_arm_max = n_per_arm_max, block.sizes = block.sizes,
                     mu_c = mu_c, sd_c = sd_c, mu_t = mu_t, sd_t = sd_t, #
                     prioritize_low_trteff = prioritize_low_trteff, gamma = gamma, #   %
+                    method = method,
                     th.fut = th.fut, th.eff = th.eff, th.prom = th.prom, ##
                     nsim = nsim, num_chains = num_chains, n.iter = n.iter, #
                     n.adapt = n.adapt, perc_burnin = perc_burnin, progress.bar = progress.bar)
@@ -111,8 +114,7 @@ blockrand <- function(n, num.levels = 2, levels = LETTERS[seq(length = num.level
   block.size <- numeric(0)
   i <- 1
   while (length(treat) < n) {
-    if ((uneq.beg && (i == 1)) || (uneq.mid && (length(treat) >
-                                                n/2))) {
+    if ((uneq.beg && (i == 1)) || (uneq.mid && (length(treat) > n/2))) {
       n2 <- max(block.sizes) * length(levels) + 1
       ii <- uneq.maxit
       while (ii > 0) {
