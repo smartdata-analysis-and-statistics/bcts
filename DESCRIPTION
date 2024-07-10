@@ -20,7 +20,9 @@ Imports:
     binom,
     rjags,
     stats,
-    utils
+    utils,
+    rlang,
+    randomizeR
 Suggests: 
     knitr,
     rmarkdown,

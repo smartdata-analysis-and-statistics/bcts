@@ -1,11 +1,13 @@
 #' Sample size determination for Pearson Chi-square test
 #'
-#' @param alpha Desired level of significance
-#' @param power Target power
 #' @param p_treat Expected response probability in treated patients
 #' @param p_control Expected response probability in control patients
 #' @param delta Margin for deciding superiority (delta > 0) or non-inferiority (delta < 0)
 #' @param kappa Treatment allocation ratio
+#' @param alpha Desired level of significance
+#' @param power Target power
+#' @param test Type of test
+#' @param design Study design
 #'
 #' @description
 #' The problem of testing non-inferiority and superiority can be unified by the following hypotheses:
@@ -74,6 +76,8 @@ N_two_sample_proportions <- function(p_treat = NA,
 #' @param tar Treatment allocation ratio
 #' @param alpha Alpha
 #' @param nsim Number of simulations to conduct
+#'
+#' @import stats
 #'
 #' @return List with result
 #' @export

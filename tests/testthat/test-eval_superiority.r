@@ -1,3 +1,6 @@
+require(rjags)
+require(binom)
+
 test_that("Test type-I error control Bayesian analysis", {
   nsim <- 10000
   alpha <- 0.05
@@ -9,8 +12,7 @@ test_that("Test type-I error control Bayesian analysis", {
   for (i in 1:nsim) {
     # generate trial data
     ds <- sim_rct_normal(n = 100, mean = c(0, 0, 0), sd = c(1, 1, 2),
-                         trtnames = c("control", "treat1", "treat2"),
-                         block.sizes = 1)
+                         trtnames = c("control", "treat1", "treat2"))
 
     result <- eval_superiority(data = ds, margin = 0, gamma = 1 - alpha,
                                method = "bayes", num_chains = 4,
@@ -26,9 +28,9 @@ test_that("Test type-I error control Bayesian analysis", {
   treat2.ci <- binom.confint(sum(sig$treat2), n = nsim, conf.level = 0.95, methods = "exact")
 
   expect_true(alpha >= treat1.ci$lower & alpha <= treat1.ci$upper,
-              info = paste0("Type-I error for treat1 is not maintained (", round(treat1.ci$lower,4), "; ", round(treat1.ci$upper,4)))
+              info = paste0("Type-I error for treat1 is not maintained (", round(treat1.ci$lower,4), "; ", round(treat1.ci$upper,4), ")"))
   expect_true(alpha >= treat2.ci$lower & alpha <= treat2.ci$upper,
-              info = paste0("Type-I error for treat2 is not maintained (", round(treat2.ci$lower,4), "; ", round(treat2.ci$upper,4)))
+              info = paste0("Type-I error for treat2 is not maintained (", round(treat2.ci$lower,4), "; ", round(treat2.ci$upper,4), ")"))
 
 })
 
@@ -43,8 +45,7 @@ test_that("Test type-I error control frequentist analysis", {
   for (i in 1:nsim) {
     # generate trial data
     ds <- sim_rct_normal(n = 100, mean = c(0, 0, 0), sd = c(1, 1, 2),
-                         trtnames = c("control", "treat1", "treat2"),
-                         block.sizes = 1)
+                         trtnames = c("control", "treat1", "treat2"))
 
     result <- eval_superiority(data = ds, margin = 0, gamma = 1 - alpha, method = "mcmc")
 
@@ -58,9 +59,9 @@ test_that("Test type-I error control frequentist analysis", {
   treat2.ci <- binom.confint(sum(sig$treat2), n = nsim, conf.level = 0.95, methods = "exact")
 
   expect_true(alpha >= treat1.ci$lower & alpha <= treat1.ci$upper,
-              info = paste0("Type-I error for treat1 is not maintained (", round(treat1.ci$lower,4), "; ", round(treat1.ci$upper,4)))
+              info = paste0("Type-I error for treat1 is not maintained (", round(treat1.ci$lower,4), "; ", round(treat1.ci$upper,4), ")"))
   expect_true(alpha >= treat2.ci$lower & alpha <= treat2.ci$upper,
-              info = paste0("Type-I error for treat2 is not maintained (", round(treat2.ci$lower,4), "; ", round(treat2.ci$upper,4)))
+              info = paste0("Type-I error for treat2 is not maintained (", round(treat2.ci$lower,4), "; ", round(treat2.ci$upper,4), ")"))
 
 })
 

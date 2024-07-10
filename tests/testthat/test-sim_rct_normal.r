@@ -1,6 +1,6 @@
-test_that("Test type-I error control", {
-  require(binom)
+require(binom)
 
+test_that("Test type-I error control", {
   nsim <- 10000
   alpha <- 0.02
 
@@ -11,8 +11,7 @@ test_that("Test type-I error control", {
   for (i in 1:nsim) {
     # generate trial data
     ds <- sim_rct_normal(n = 100, mean = c(0, 0), sd = c(1, 1),
-                         trtnames = c("control", "treat"),
-                         block.sizes = 1)
+                         trtnames = c("control", "treat"))
 
     # Evaluate significance using frequentist method
     Yc <- ds %>% filter(Treatment == "control") %>% pull(Y)
@@ -41,8 +40,7 @@ test_that("Test distribution of simulated data", {
   for (i in 1:nsim) {
     # generate trial data
     ds <- sim_rct_normal(n = 1000, mean = c(0, 0.4, 0.5), sd = c(1, 1, 2),
-                         trtnames = c("control", "treat1", "treat2"),
-                         block.sizes = 1)
+                         trtnames = c("control", "treat1", "treat2"))
 
     pop_param <- ds %>% group_by(Treatment) %>% summarize(mu = mean(Y), sigma = sd(Y))
 

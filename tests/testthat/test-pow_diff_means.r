@@ -1,3 +1,5 @@
+require(binom)
+
 test_that("Test type-I error control frequentist analysis", {
   nsim <- 10000
   alpha <- 0.05

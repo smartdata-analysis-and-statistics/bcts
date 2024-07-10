@@ -36,7 +36,7 @@ pow_diff_means(
 
 \item{alpha}{One-sided alpha}
 
-\item{alternative}{}
+\item{alternative}{Alternative hypothesis, defaults to "Superiority"}
 }
 \value{
 An object of class "fpower"

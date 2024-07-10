@@ -30,6 +30,10 @@ N_two_sample_proportions(
 \item{alpha}{Desired level of significance}
 
 \item{power}{Target power}
+
+\item{test}{Type of test}
+
+\item{design}{Study design}
 }
 \value{
 A list

@@ -1,8 +1,3 @@
-library(dplyr)
-
-
-source("R/simulation.r")
-
 #' Estimate the Power for the Difference between Two Means
 #' @param n1 Number of observations in treatment group 1
 #' @param n2 Number of observations in treatment group 2
@@ -13,11 +8,12 @@ source("R/simulation.r")
 #' @param sd1 Standard deviation of the outcome in treatment group 1
 #' @param sd2 Standard deviation of the outcome in treatment group 2
 #' @param alpha One-sided alpha
-#' @param alternative
+#' @param alternative Alternative hypothesis, defaults to "Superiority"
 #'
 #' @description
 #' For superiority, H0 is defined as mu1 - mu2 <= margin.
 #'
+#' @importFrom stats pnorm
 #'
 #' @return An object of class "fpower"
 #'
@@ -76,18 +72,17 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
 }
 
 
-
 #' Bayesian clinical trial simulation (BCTS)
 #'
-#' @param n_int Planned sample size at interim (control arm)
-#' @param n_0_pln Planned sample size for the control group
-#' @param n_0_max Maximum sample size for the control group after sample size increase
-#' @param mu_c Expected effect size for the control treatment
-#' @param sd_c Expected standard deviation for the control treatment
-#' @param mu_t Named vector with expected effect sizes for the active treatments
-#' @param sd_t Named vector with expected standard deviations for the active treatments
-#' @param prioritize_low_trteff  If multiple treatments have a posterior predictive power > 'th.eff', the treatment with lowest effect size
-#' will be selected at interim  (prioritize_low_trteff = TRUE).
+#' @param n_int Interim sample size
+#' @param n_pln Planned sample size
+#' @param n_max Maximum sample size
+#' @param mu Named vector with expected effect sizes
+#' @param sigma Named vector with expected standard deviations
+#' @param trt_ref Character denoting the control treatment
+#' @param trt_rank Named vector with preference ranking for each treatment (e.g., lower doses are preferred)
+#' @param prioritize_low_rank  If multiple treatments have a posterior predictive power > 'th.eff', the treatment with lowest rank
+#' will be selected at interim
 #' @param gamma Level to declare success. For a fixed design, gamma is typically chosen as 0.975 for a one-sided type-I error rate of 2.5%. However, an increase is usually needed because of dose selection.
 #' @param method Analysis method. Choose 'mcmc' or 'bayes'
 #' @param th.fut Futility threshold for the predictive power calculated conditioned on the interim data
@@ -100,7 +95,6 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
 #' @param n.adapt Number of MCMC iterations for adaptation
 #' @param perc_burnin How many n.iter should be reserved for burnin?
 #' @param progress.bar Type of progress bar. Possible values are "text", "gui", and "none"
-#' @param quiet Display messaging output
 #'
 #' @description
 #' The null hypothesis can be rejected when the posterior probability that $\\mu_t$ - $\\mu_c$ exceeds a high probability threshold,
@@ -108,56 +102,45 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
 #'
 #'
 #' @return An object of class "bcts"
+#'
 #' @importFrom dplyr %>%
 #' @importFrom dplyr slice_head mutate select filter add_row pull
 #' @importFrom utils txtProgressBar setTxtProgressBar
-#' @export
+#' @importFrom binom binom.confint
+#' @importFrom rlang .data
 #'
-bcts <- function(n_per_arm_int = 20,
-                 n_per_arm_pln = 65,
-                 n_per_arm_max = 80,
-                 block.sizes = 1, # block size for randomization
-                 mu_c = 0,
-                 sd_c = 1,
-                 mu_t = c("Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
-                 sd_t = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1),
-                 prioritize_low_trteff = TRUE,
-                 gamma = 0.975, #0.98   %
-                 th.fut = 0.2, ##
-                 th.eff = 0.9, ##
-                 th.prom = 0.5, ##
-                 method = "mcmc",
-                 nsim = 1000, # no. of simulatoins at trial start
-                 num_chains = 4,
-                 n.iter = 5000, #
-                 n.adapt = 500,
-                 perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
-                 progress.bar = "text") {
+bcts_without_typeI <- function(n_int = 60,
+                               n_pln = 20 + 65*2,
+                               n_max = 20 + 80*2,
+                               mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5),
+                               sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1),
+                               trt_ref = "Placebo",
+                               trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+                               prioritize_low_rank = TRUE,
+                               gamma = 0.975, #0.98   %
+                               th.fut = 0.2, ##
+                               th.eff = 0.9, ##
+                               th.prom = 0.5, ##
+                               method = "mcmc",
+                               nsim = 1000, #
+                               num_chains = 4,
+                               n.iter = 5000, #
+                               n.adapt = 500,
+                               perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
+                               progress.bar = "text") {
 
 
   # Sample the random seeds
   seeds <- sample(seq(nsim*10,nsim*20), size = nsim)
 
-  # Select treatment with highest dose
-  trt_high <- order(mu_t, decreasing = TRUE)[1] + 1
-  trt_low <- order(mu_t, decreasing = FALSE)[1] + 1
-
-
-  n_treat <- length(mu_t)
-  n_arms <- n_treat + 1
-
-  # Calculate the sample sizes
-  n_pln <- 2*n_per_arm_pln + (length(mu_t) - 1)*n_per_arm_int
-  n_max <- 2*n_per_arm_max + (length(mu_t) - 1)*n_per_arm_int
+  n_arms <- length(mu)
 
   # Extract the treatment names
-  if (is.null(names(mu_t))) {
-    names(mu_t) <- names(sd_t) <- paste0("trt", seq(mu_t))
-  }
-  trt_names <- c("Control", names(mu_t))
-  mu <- c(mu_c, mu_t)
-  sigma <- c(sd_c, sd_t)
+  trt_names <- names(mu)
   names(mu) <- names(sigma) <- trt_names
+
+  # Active treatment names
+  trt_active <- setdiff(trt_names, trt_ref)
 
   simresults <- data.frame(sim = seq(nsim),
                            seed = NA,
@@ -165,27 +148,14 @@ bcts <- function(n_per_arm_int = 20,
                            inc.ss = FALSE,
                            sel.dose = NA,
                            sel.dose.ppos = NA,
-                           n_per_arm_fin = NA,
-                           sig_fin = NA)
+                           n.final = NA,
+                           est.final = NA,
+                           est_lower.final = NA,
+                           est_se.final = NA,
+                           rejectH0.final = NA)
 
-  results_interim <- results_final <- data.frame(sim = numeric(),
-                           Treatment = character(),
-                           trt = numeric(),
-                           n = numeric(),
-                           N = numeric(),
-                           est_lower = numeric(),
-                           est = numeric(),
-                           est_upper = numeric(),
-                           est_se = numeric(),
-                           Z_test = numeric(),
-                           Z_crit = numeric(),
-                           I = numeric(),
-                           rejectH0 = logical(),
-                           ppos = numeric())
-  names(results_interim)[names(results_interim) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
-  names(results_interim)[names(results_interim) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
-  names(results_final)[names(results_final) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
-  names(results_final)[names(results_final) == "est_upper"] <- paste0("est_", sub("0\\.", "", gamma))
+  n.interim <- n.final <- data.frame(sim = numeric(), Treatment = character(), n = integer(), stringsAsFactors = FALSE)
+
 
   if (progress.bar == "text") {
     pb <- utils::txtProgressBar(min = 0, max = nsim, initial = 0)
@@ -195,103 +165,129 @@ bcts <- function(n_per_arm_int = 20,
     simresults$seed[i] <- seeds[i]
     set.seed(seeds[i])
 
-    # Simulate all trial data for the maximum sample size
-    dat_max <- sim_rct_normal(n = n_per_arm_max*n_arms,
-                              mean = c(mu_c, mu_t),
-                              sd = c(sd_c, sd_t),
-                              trtnames = trt_names,
-                              block.sizes = block.sizes)
+    # Simulate trial data at interim stage
+    dat_int <- sim_rct_normal(n = n_int,
+                              mean = mu,
+                              sd = sigma,
+                              trtnames = trt_names)
+
+    # Summarize the data
+    n_int_summary_data <- dat_int %>%
+      dplyr::group_by(.data$Treatment) %>%
+      dplyr::summarize(n = dplyr::n(), .groups = 'drop') %>%
+      dplyr::mutate(sim = i)
+    n.interim <- dplyr::bind_rows(n.interim , n_int_summary_data)
+
+    # Evaluate PPOS for each treatment at the planned sample size
+    ppos <- setNames(rep(NA, length(trt_active)), trt_active)
+
+    for (trt_act_i in trt_active) {
+
+      dat_xtr <- sim_rct_normal(n = n_pln - nrow(dat_int),
+                                mean = mu[c(trt_ref, trt_act_i)],
+                                sd = sigma[c(trt_ref, trt_act_i)],
+                                trtnames = c(trt_ref, trt_act_i))
+      dat_xtr$Y <- NA
+      dat_pln <- rbind(dat_int %>% filter(.data$Treatment %in% c(trt_ref, trt_act_i)), dat_xtr)
+      dat_pln$Treatment <- droplevels(dat_pln$Treatment)
+
+      result_pln <- eval_superiority(dat_pln, margin = 0, gamma = gamma,
+                                     method = method, trt_ref = trt_ref,
+                                     num_chains = num_chains,
+                                     n.adapt = n.adapt, n.iter = n.iter,
+                                     perc_burnin = perc_burnin)
+
+      ppos[trt_act_i] <-  result_pln %>% pull("ppos")
+    }
 
 
-    # Evaluate PPOS at the planned sample size
-    dat_pln <- dat_max %>%
-      dplyr::slice_head(n = n_per_arm_pln*n_arms) %>%
-      dplyr::mutate(Y = ifelse(id > n_per_arm_int*n_arms, NA, Y))
-
-    result_pln <- eval_superiority(dat_pln, margin = 0, gamma = gamma,
-                                   method = method, num_chains = num_chains,
-                                   n.adapt = n.adapt, n.iter = n.iter,
-                                   perc_burnin = perc_burnin)
-
-    results_interim <- results_interim %>% add_row(cbind(sim = i, result_pln))
-
-    if (max(result_pln$ppos) < th.fut) {
+    if (max(ppos) < th.fut) {
       simresults$fut.trig[i] <- TRUE
       simresults$inc.ss[i] <- FALSE
-      simresults$n_per_arm_fin[i] <- n_per_arm_pln
-      simresults$sel.dose[i] <- result_pln$trt[order(result_pln$ppos, decreasing = TRUE)[1]]
-      simresults$sel.dose.ppos[i] <- result_pln$ppos[order(result_pln$ppos, decreasing = TRUE)[1]]
-    } else if (max(result_pln$ppos) >= th.prom & max(result_pln$ppos) < th.eff) {
+      simresults$n.final[i] <- n_pln
+      simresults$sel.dose[i] <- names(ppos)[which.max(ppos)]
+      simresults$sel.dose.ppos[i] <- max(ppos)
+    } else if (max(ppos) >= th.prom & max(ppos) < th.eff) {
       simresults$fut.trig[i] <- FALSE
       simresults$inc.ss[i] <- TRUE
 
       # Evaluate predictive power for each sample size
       ppos_by_n <- data.frame(n_per_arm_new = numeric(),
                               Treatment = character(),
-                              trt = numeric(),
                               n = numeric(),
                               N = numeric(),
                               ppos = numeric())
 
-      for (n_per_arm_new in (n_per_arm_pln + 1):n_per_arm_max) {
+      for (n_pln_new in (n_pln + 1):n_max) {
+        ppos <- setNames(rep(NA, length(trt_active)), trt_active)
+        for (trt_act_i in trt_active) {
+          dat_xtr <- sim_rct_normal(n = n_pln_new - nrow(dat_int),
+                                    mean = mu[c(trt_ref, trt_act_i)],
+                                    sd = sigma[c(trt_ref, trt_act_i)],
+                                    trtnames = c(trt_ref, trt_act_i))
+          dat_xtr$Y <- NA
+          dat_pln <- rbind(dat_int %>% filter(.data$Treatment %in% c(trt_ref, trt_act_i)), dat_xtr)
+          dat_pln$Treatment <- droplevels(dat_pln$Treatment)
 
-        dat_pln_new <- dat_max %>% slice_head(n = n_per_arm_new*n_arms) %>%
-          mutate(Y = ifelse(id > n_per_arm_int*n_arms, NA, Y))
+          result_pln <- eval_superiority(dat_pln, margin = 0, gamma = gamma,
+                                         method = method, trt_ref = trt_ref,
+                                         num_chains = num_chains,
+                                         n.adapt = n.adapt, n.iter = n.iter,
+                                         perc_burnin = perc_burnin)
 
-        result_pln_new <- eval_superiority(data = dat_pln_new, margin = 0,
-                                           gamma = gamma, method = method,
-                                           num_chains = num_chains,
-                                           n.adapt = n.adapt, n.iter = n.iter,
-                                           perc_burnin = perc_burnin)
-
-        ppos_by_n <- ppos_by_n %>% add_row(cbind(n_per_arm_new, result_pln_new %>% select(Treatment, trt, n, N, ppos)))
-      }
-
-      # Select the lowest sample size resulting in a PPOS >= th.eff
-      filtered_ppos <- subset(ppos_by_n, ppos >= th.eff)
-
-      if (nrow(filtered_ppos) > 0) {
-        sel_row <- filtered_ppos[which.min(filtered_ppos$n_per_arm_new),]
-        simresults$sel.dose[i] <- sel_row$trt
-        simresults$sel.dose.ppos[i] <- sel_row$ppos
-        simresults$n_per_arm_fin[i] <- sel_row$n_per_arm_new
-      } else {
-        # Increasing the sample size did not help to attain target power
-        # Keep the maximum sample size
-        simresults$sel.dose[i] <- result_pln$trt[order(result_pln$ppos, decreasing = TRUE)[1]]
-        simresults$sel.dose.ppos[i] <- result_pln$ppos[order(result_pln$ppos, decreasing = TRUE)[1]]
-        simresults$n_per_arm_fin[i] <- n_per_arm_max
+          ppos[trt_act_i] <-  result_pln %>% pull("ppos")
+        }
+        simresults$n.final[i] <- n_pln_new
+        simresults$sel.dose[i] <- names(ppos)[which.max(ppos)]
+        simresults$sel.dose.ppos[i] <- max(ppos)
+        if (max(ppos) >= th.eff) {
+          break;
+        }
       }
     } else {
       simresults$fut.trig[i] <- FALSE
       simresults$inc.ss[i] <- FALSE
-      simresults$n_per_arm_fin[i] <- n_per_arm_pln
+      simresults$n.final[i] <- n_pln
 
-      # If both predictive powers exceed 0.9 then
-      # choose Low dose otherwise choose the dose with higher
-      # predictive power
-      if (sum((result_pln$ppos >= th.eff)) >= 2 & prioritize_low_trteff) {
-        simresults$sel.dose[i] <- result_pln$trt[order(mu_t[which(result_pln$ppos >= th.eff)], decreasing = FALSE)[1]]
-        simresults$sel.dose.ppos[i] <- result_pln$ppos[order(mu_t[which(result_pln$ppos >= th.eff)], decreasing = FALSE)[1]]
+      # Filter treatments that have ppos values above th.eff
+      filtered_treatments <- ppos[ppos >= th.eff]
+
+      if (length(filtered_treatments) >= 2 & prioritize_low_rank) {
+        # Get the treatment name with the lowest rank among the filtered treatments
+        treatment_with_lowest_rank <- names(which.min(trt_rank[names(filtered_treatments)]))
+        simresults$sel.dose[i] <- treatment_with_lowest_rank
+        simresults$sel.dose.ppos[i] <- ppos[treatment_with_lowest_rank]
       } else {
-        simresults$sel.dose[i] <- result_pln$trt[order(result_pln$ppos, decreasing = TRUE)[1]]
-        simresults$sel.dose.ppos[i] <- result_pln$ppos[order(result_pln$ppos, decreasing = TRUE)[1]]
+        simresults$sel.dose[i] <- names(ppos)[which.max(ppos)]
+        simresults$sel.dose.ppos[i] <- max(ppos)
       }
     }
 
-    # Keep the reference treatment and the selected treatment
-    dat_fin <- dat_max %>%
-      filter(trt %in% c(1,simresults$sel.dose[i])) %>%
-      dplyr::slice_head(n = simresults$n_per_arm_fin[i]*2)
+    # Efficacy analysis in the final dataset
+    dat_xtr <- sim_rct_normal(n = simresults$n.final[i] - nrow(dat_int),
+                              mean = mu[c(trt_ref, simresults$sel.dose[i])],
+                              sd = sigma[c(trt_ref, simresults$sel.dose[i])],
+                              trtnames = c(trt_ref, simresults$sel.dose[i]))
+
+    # Summarize the data
+    n_fin_summary_data <- rbind(dat_int, dat_xtr) %>%
+      dplyr::group_by(.data$Treatment) %>%
+      dplyr::summarize(n = dplyr::n(), .groups = 'drop') %>%
+      dplyr::mutate(sim = i)
+    n.final <- dplyr::bind_rows(n.final , n_fin_summary_data)
+
+    dat_fin <- rbind(dat_int %>% filter(.data$Treatment %in% c(trt_ref, simresults$sel.dose[i])), dat_xtr)
+    dat_fin$Treatment <- droplevels(dat_fin$Treatment)
 
     result_fin <- eval_superiority(data = dat_fin, margin = 0, gamma = gamma,
-                                   method = method, num_chains = num_chains,
-                                   n.adapt = n.adapt, n.iter = n.iter,
-                                   perc_burnin = perc_burnin)
+                                   trt_ref = trt_ref, method = method,
+                                   num_chains = num_chains, n.adapt = n.adapt,
+                                   n.iter = n.iter, perc_burnin = perc_burnin)
 
-    results_final <- results_final %>% add_row(cbind(sim = i, result_fin))
-
-    simresults$sig_fin[i] <- result_fin %>% pull(rejectH0)
+    simresults$est.final[i] <- result_fin$est
+    simresults$est_lower.final[i] <-  result_fin[paste0("est_", sub("0\\.", "", 1 - gamma))]
+    simresults$est_se.final[i] <- result_fin$est_se
+    simresults$rejectH0.final[i] <- result_fin$rejectH0
 
     if (progress.bar == "text") {
       utils::setTxtProgressBar(pb, i)
@@ -302,26 +298,169 @@ bcts <- function(n_per_arm_int = 20,
     close(pb)
   }
 
-  out.n <- list(interim = n_per_arm_int*n_arms,
-                final = mean(simresults$n_per_arm_fin*2) + n_per_arm_int*(n_arms - 2))
+  names(simresults)[names(simresults) == "est_lower.final"] <- paste0("est_", sub("0\\.", "", 1 - gamma), ".final")
 
-  out <- list(mu = c(mu_c, mu_t),
-              sigma = c(sd_c, sd_t),
-              n = out.n,
+  out <- list(mu = mu,
+              sigma = sigma,
               gamma = gamma,
-              power =  binom.confint(x = sum(simresults$sig_fin), n = nsim, methods = "exact"),
-              fut.trig = binom.confint(x = sum(simresults$fut.trig), n = nsim, methods = "exact"),
-              inc.ss = binom.confint(x = sum(simresults$inc.ss), n = nsim, methods = "exact"),
-              sel.low = binom.confint(x = sum(simresults$sel.dose == trt_low), n = nsim, methods = "exact"),
-              sel.high = binom.confint(x = sum(simresults$sel.dose == trt_high), n = nsim, methods = "exact"),
-              simresults = simresults,
-              results_interim = results_interim,
-              results_final = results_final
-              )
+              n.interim = n.interim,
+              n.final = n.final,
+              simresults = simresults
+  )
 
   class(out) <- "bcts"
   return(out)
 }
+
+#' Bayesian clinical trial simulation (BCTS)
+#'
+#' @param n_int Interim sample size
+#' @param n_pln Planned sample size
+#' @param n_max Maximum sample size
+#' @param mu Named vector with expected effect sizes
+#' @param sigma Named vector with expected standard deviations
+#' @param trt_ref Character denoting the control treatment
+#' @param trt_rank Named vector with preference ranking for each treatment (e.g., lower doses are preferred)
+#' @param prioritize_low_rank  If multiple treatments have a posterior predictive power > 'th.eff', the treatment with lowest rank
+#' will be selected at interim
+#' @param gamma Level to declare success. For a fixed design, gamma is typically chosen as 0.975 for a one-sided type-I error rate of 2.5%. However, an increase is usually needed because of dose selection.
+#' @param eval.typeI Evaluate type-I error? (yes by default)
+#' @param method Analysis method. Choose 'mcmc' or 'bayes'
+#' @param th.fut Futility threshold for the predictive power calculated conditioned on the interim data
+#' @param th.eff Efficacy threshold for the predictive power calculated conditioned on the interim data
+#' @param th.prom Predictive power threshold that would trigger sample size increase
+#' @param method Method to estimate the power. Choose "bayes" for a fully Bayesian approach or "mcmc" for a frequentist approximation.
+#' @param nsim Number of trials to simulate (default: 1000)
+#' @param num_chains Number of MCMC chains
+#' @param n.iter Number of MCMC iterations for estimation
+#' @param n.adapt Number of MCMC iterations for adaptation
+#' @param perc_burnin How many n.iter should be reserved for burnin?
+#' @param summary.conf.level Confidence level for summary estimates
+#' @param progress.bar Type of progress bar. Possible values are "text", "gui", and "none"
+#'
+#' @return A data frame with simulation results
+#' @export
+#'
+#' @importFrom dplyr %>%
+#' @importFrom rlang .data
+bcts <- function(n_int = 60,
+                      n_pln = 20 + 65*2,
+                      n_max = 20 + 80*2,
+                      mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5),
+                      sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1),
+                      trt_ref = "Placebo",
+                      trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+                      prioritize_low_rank = TRUE,
+                      gamma = 0.98, #   %
+                 eval.typeI = TRUE,
+                      method = "mcmc",
+                      th.fut = 0.2, ##
+                      th.eff = 0.9, ##
+                      th.prom = 0.5, ##
+                      nsim = 1000, # no. of simulatoins at trial start
+                      num_chains = 4,
+                      n.iter = 5000, #
+                      n.adapt = 500,
+                      perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
+                      summary.conf.level = 0.95, # Confidence level for summary estimates of interest
+                      progress.bar = "text") {
+
+  sim_power <- bcts_without_typeI(n_int = n_int, n_pln = n_pln, n_max = n_max,
+                                  mu = mu, sigma = sigma, #
+                                  trt_ref = trt_ref,
+                                  trt_rank = trt_rank,
+                                  prioritize_low_rank = prioritize_low_rank, gamma = gamma, #   %
+                                  method = method,
+                                  th.fut = th.fut, th.eff = th.eff, th.prom = th.prom, ##
+                                  nsim = nsim, num_chains = num_chains, n.iter = n.iter, #
+                                  n.adapt = n.adapt, perc_burnin = perc_burnin, progress.bar = progress.bar)
+
+  if (!eval.typeI) {
+    return(sim_power)
+  }
+    # Evaluate type-I error
+    mu_type1 <- mu
+    mu_type1[] <- 0
+    sim_type1 <- bcts_without_typeI(n_int = n_int, n_pln = n_pln, n_max = n_max,
+                                    mu = mu_type1, sigma = sigma, #
+                                    trt_ref = trt_ref,
+                                    trt_rank = trt_rank,
+                                    prioritize_low_rank = prioritize_low_rank, gamma = gamma, #   %
+                                    method = method,
+                                    th.fut = th.fut, th.eff = th.eff, th.prom = th.prom, ##
+                                    nsim = nsim, num_chains = num_chains, n.iter = n.iter, #
+                                    n.adapt = n.adapt, perc_burnin = perc_burnin, progress.bar = progress.bar)
+
+    ## Get quantiles of final sample size
+    n_fin_qt <- stats::quantile(sim_power$simresults$n.final, c((1 - summary.conf.level)/2, 1-(1 - summary.conf.level)/2))
+
+    n_fin_by_arm <- sim_power$n.final %>%
+      dplyr::group_by(.data$Treatment) %>%
+      dplyr::summarize(est = mean(.data$n),
+                       cil = quantile(.data$n, (1 - summary.conf.level)/2),
+                       ciu = quantile(.data$n, 1-(1 - summary.conf.level)/2)) %>%
+      dplyr::mutate(statistic = paste0("N final (", .data$Treatment, ")")) %>%
+      dplyr::select(-"Treatment")
+
+    n_select_arm <- sim_power$simresults %>%
+      dplyr::group_by(.data$sel.dose) %>%
+      dplyr::summarize(n = dplyr::n()) %>%
+      dplyr::mutate(statistic = paste0("Pr(select ", .data$sel.dose, ")"),
+                    est = .data$n/nrow(sim_power$simresults),
+                    cil = binom.confint(x = .data$n,
+                                        n = nrow(sim_power$simresults),
+                                        methods = "exact", conf.level = summary.conf.level)$lower,
+                    ciu = binom.confint(x = .data$n,
+                                        n = nrow(sim_power$simresults),
+                                        methods = "exact", conf.level = summary.conf.level)$upper) %>%
+      dplyr::select(-c("sel.dose", "n"))
+
+    typeI <- binom.confint(x = sum(sim_type1$simresults$rejectH0.final),
+                           n = nrow(sim_type1$simresults),
+                           methods = "exact", conf.level = summary.conf.level)
+    power <- binom.confint(x = sum(sim_power$simresults$rejectH0.final),
+                           n = nrow(sim_power$simresults),
+                           methods = "exact", conf.level = summary.conf.level)
+    fut.trig <- binom.confint(x = sum(sim_power$simresults$fut.trig),
+                              n = nrow(sim_power$simresults),
+                              methods = "exact", conf.level = summary.conf.level)
+    inc.ss <- binom.confint(x = sum(sim_power$simresults$inc.ss),
+                            n = nrow(sim_power$simresults),
+                            methods = "exact", conf.level = summary.conf.level)
+
+    out <- data.frame(statistic = character(),
+                      est = numeric(),
+                      cil = numeric(),
+                      ciu = numeric())
+    out <- out %>% add_row(data.frame(statistic = "Type-I error",
+                                      est = typeI$mean,
+                                      cil = typeI$lower,
+                                      ciu = typeI$upper))
+    out <- out %>% add_row(data.frame(statistic = "Power",
+                                      est = power$mean,
+                                      cil = power$lower,
+                                      ciu = power$upper))
+    out <- out %>% add_row(data.frame(statistic = "Pr(fut.trig)",
+                                      est = fut.trig$mean,
+                                      cil = fut.trig$lower,
+                                      ciu = fut.trig$upper))
+    out <- out %>% add_row(data.frame(statistic = "Pr(inc.ss)",
+                                      est = inc.ss$mean,
+                                      cil = inc.ss$lower,
+                                      ciu = inc.ss$upper))
+    out <- out %>% add_row(data.frame(statistic = "N final",
+                                      est = mean(sim_power$simresults$n.final),
+                                      cil = n_fin_qt[1],
+                                      ciu = n_fin_qt[2]))
+    out <- out %>% add_row(n_fin_by_arm)
+    out <- out %>% add_row(n_select_arm)
+    return(out)
+
+
+}
+
+
+
 
 
 
@@ -330,10 +469,12 @@ bcts <- function(n_per_arm_int = 20,
 #' @param data Trial data
 #' @param margin Superiority margin (default: 0)
 #' @param gamma Level to declare success (default: 0.975)
+#' @param method Method to evaluate superiority (Choose 'mcmc' or 'bayes')
 #' @param num_chains The number of parallel chains for the model
 #' @param n.adapt The number of iterations for adaptation.
 #' @param n.iter 	The number of iterations to monitor
 #' @param perc_burnin The percentage of iterations to keep for burn-in
+#' @param trt_ref Reference treatment name
 #'
 #' @description
 #' Superiority is established if Pr(mean(treat)-mean(control)>margin) > gamma
@@ -349,14 +490,20 @@ eval_superiority <- function(data,
                              gamma, #0.975
                              method,
                              num_chains = 4,
-                             n.adapt = 500, n.iter = 1000, perc_burnin = 0.2) {
+                             n.adapt = 500, n.iter = 1000, perc_burnin = 0.2, trt_ref = "Placebo") {
+
+  treatments <- unique(data$Treatment)
+  if (length(treatments) != 2) {
+    stop("Superiority can only be assessed for two-arm studies!")
+  }
 
   if (method == "bayes") {
     result <- eval_superiority_bayes(data = data, margin = margin, gamma = gamma,
+                                     trt_ref = trt_ref,
                                      num_chains = num_chains, n.adapt = n.adapt,
                                      n.iter = n.iter, perc_burnin = perc_burnin)
   } else if (method == "mcmc") {
-    result <- eval_superiority_mcmc(data = data, margin = margin, gamma = gamma)
+    result <- eval_superiority_mcmc(data = data, margin = margin, gamma = gamma, trt_ref = trt_ref)
   } else {
     stop("Unknown method. Please use 'bayes' or 'mcmc'.")
   }
@@ -367,23 +514,24 @@ eval_superiority <- function(data,
 
 #' Bayesian method to evaluate superiority
 #'
-#' @param data
-#' @param margin
-#' @param gamma
-#' @param num_chains
-#' @param n.adapt
-#' @param n.iter
-#' @param perc_burnin
+#' @param data Trial data
+#' @param margin Superiority margin (default: 0)
+#' @param gamma Level to declare success (default: 0.975)
+#' @param trt_ref Reference treatment
+#' @param num_chains The number of parallel chains for the model
+#' @param n.adapt The number of iterations for adaptation.
+#' @param n.iter The number of iterations to monitor
+#' @param perc_burnin The percentage of iterations to keep for burn-in
 #'
-#' @importFrom stats qnorm
+#' @import stats
+#' @import rjags
+#' @importFrom rlang .data
 #'
-#' @return
+#' @return A data frame with results from the evaluation
 #'
-eval_superiority_bayes <- function(data, margin, gamma, num_chains, n.adapt, n.iter, perc_burnin) {
+eval_superiority_bayes <- function(data, margin, gamma, trt_ref = "Placebo", num_chains, n.adapt, n.iter, perc_burnin) {
 
-  treatments <- unique(data$trt)
-
-  jags.config <- prepare_jags_ppos(dat = data, gamma = gamma)
+  jags.config <- prepare_jags_ppos(dat = data, gamma = gamma, margin = margin, trt_ref = trt_ref)
 
 
   # Analyse the interim data
@@ -397,48 +545,29 @@ eval_superiority_bayes <- function(data, margin, gamma, num_chains, n.adapt, n.i
   update(jags_model, n.iter = ceiling(n.iter*perc_burnin), progress.bar = "none")
 
   ##Sampling after burnin
-  fit_jags_int <- coda.samples(jags_model, variable.names =  jags.config$variable.names,
+  fit_jags_int <- coda.samples(jags_model,
+                               variable.names =  jags.config$variable.names,
                                n.iter = floor(n.iter*(1 - perc_burnin)),
                                progress.bar = "none")
 
   ## Derive posterior distributions at interim
   psample_int <- as.data.frame(do.call(rbind, fit_jags_int))
 
-  trt_est <- data.frame("Treatment" = character(),
-                        "trt" = numeric(),
-                        "n" = numeric(),
-                        "N" = numeric(),
-                        "est_lower" = numeric(),
-                        "est" = numeric(),
-                        "est_upper"  = numeric(),
-                        "est_se" = numeric(), # Standard error of the mean
-                        "Z_test" = numeric(),
-                        "Z_crit" = numeric(),
-                        "I" = numeric(), # Information level
-                        "rejectH0" = logical(), # Reject H0?
-                        "ppos" = numeric())  # Trial success based on observed data (i.e.,)
+  mudiff <- psample_int %>% pull(paste0("trteff"))
+  PPOS <- psample_int %>% pull(paste0("ppos"))
 
-  for (treat in treatments[treatments != 1]) {
-    mudiff <- psample_int %>% pull(paste0("trteff[", treat, "]"))
-    PPOS <- psample_int %>% pull(paste0("ppos[", treat, "]"))
-    trtc <-  (data %>% filter(trt == treat) %>% pull(Treatment))[1]
-    n <-  nrow(data %>% filter(trt %in% c(1, treat) & !is.na(Y)))
-    N <-  nrow(data %>% filter(trt %in% c(1, treat)))
-
-    trt_est <- trt_est %>% add_row(data.frame("Treatment" = trtc,
-                                              "trt" = as.numeric(treat),
-                                              "n" = n,
-                                              "N" = N,
-                                              "est_lower" = stats::quantile(mudiff, 1 - gamma),
-                                              "est" = mean(mudiff),
-                                              "est_upper" = stats::quantile(mudiff, gamma),
-                                              "est_se" = sd(mudiff),
-                                              "Z_test" = mean(mudiff)/sd(mudiff),
-                                              "Z_crit" = qnorm(gamma),
-                                              "I" = 1/var(mudiff),
-                                              "rejectH0" = stats::quantile(mudiff, (1 - gamma)) > 0,
-                                              "ppos" = mean(PPOS)))
-  }
+  trt_est <- data.frame("Treatment" = setdiff(data$Treatment, trt_ref),
+                        "n" = sum(!is.na(data$Y)),
+                        "N" =  nrow(data),
+                        "est_lower" = quantile(mudiff, 1 - gamma),
+                        "est" = mean(mudiff),
+                        "est_upper" = quantile(mudiff, gamma),
+                        "est_se" = sd(mudiff),
+                        "Z_test" = mean(mudiff)/sd(mudiff),
+                        "Z_crit" = qnorm(gamma),
+                        "I" = 1/var(mudiff),
+                        "rejectH0" = quantile(mudiff, (1 - gamma)) > 0,
+                        "ppos" = mean(PPOS))
 
   # Assign the dynamic column names
   names(trt_est)[names(trt_est) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
@@ -447,51 +576,41 @@ eval_superiority_bayes <- function(data, margin, gamma, num_chains, n.adapt, n.i
   return(trt_est)
 }
 
-eval_superiority_mcmc <- function(data, margin, gamma) {
+#' Frequentist method to evaluate superiority
+#'
+#' @param data Trial data
+#' @param margin Superiority margin (default: 0)
+#' @param gamma Level to declare success (default: 0.975)
+#' @param trt_ref Reference treatment name
+#'
+#' @return A data frame with the results from the evaluation
+#' @importFrom rlang .data
+eval_superiority_mcmc <- function(data, margin = 0, gamma = 0.975, trt_ref = "Placebo") {
 
-  treatments <- unique(data$trt)
+  trt_act <-  setdiff(data$Treatment, trt_ref)
+  n <-  sum(!is.na(data$Y))
+  N <-  nrow(data)
+  Yc <- data %>% filter(.data$Treatment == trt_ref & !is.na(.data$Y)) %>% pull("Y")
+  Yt <- data %>% filter(.data$Treatment == trt_act & !is.na(.data$Y)) %>% pull("Y")
 
-  trt_est <- data.frame("Treatment" = character(),
-                        "trt" = numeric(),
-                        "n" = numeric(),
-                        "N" = numeric(),
-                        "est_lower" = numeric(),
-                        "est" = numeric(),
-                        "est_upper"  = numeric(),
-                        "est_se" = numeric(), # Standard error of the mean
-                        "Z_test" = numeric(),
-                        "Z_crit" = numeric(),
-                        "I" = numeric(), # Information level
-                        "rejectH0" = logical(), # Reject H0?
-                        "ppos" = numeric())  # Trial success based on observed data (i.e.,)
+  test_freq <- pow_diff_means(n1 = length(Yt), n2 = length(Yc), N = N,
+                              mu1 = mean(Yt), mu2 = mean(Yc), margin = 0,
+                              sd1 = sd(Yt), sd2  = sd(Yc),
+                              alpha = 1 - gamma,
+                              alternative = "superiority")
 
-  for (treat in treatments[treatments != 1]) {
-    trtc <-  (data %>% filter(trt == treat) %>% pull(Treatment))[1]
-    n <-  nrow(data %>% filter(trt %in% c(1, treat) & !is.na(Y)))
-    N <-  nrow(data %>% filter(trt %in% c(1, treat)))
-    Yc <- data %>% filter(trt == 1 & !is.na(Y)) %>% pull(Y)
-    Yt <- data %>% filter(trt == treat & !is.na(Y)) %>% pull(Y)
-
-    test_freq <- pow_diff_means(n1 = length(Yt), n2 = length(Yc), N = N,
-                                mu1 = mean(Yt), mu2 = mean(Yc), margin = 0,
-                                sd1 = sd(Yt), sd2  = sd(Yc),
-                                alpha = 1 - gamma,
-                                alternative = "superiority")
-
-    trt_est <- trt_est %>% add_row(data.frame("Treatment" = trtc,
-                                              "trt" = as.numeric(treat),
-                                              "n" = n,
-                                              "N" = N,
-                                              "est_lower" = test_freq$diff_lower,
-                                              "est" = test_freq$diff,
-                                              "est_upper" = test_freq$diff_upper,
-                                              "est_se" = test_freq$diff_se,
-                                              "Z_test" = test_freq$Z_test,
-                                              "Z_crit" = test_freq$Z_crit,
-                                              "I" = test_freq$I,
-                                              "rejectH0" = test_freq$rejectH0,
-                                              "ppos" = test_freq$ppos))
-  }
+  trt_est <- data.frame("Treatment" = trt_act,
+                        "n" = n,
+                        "N" = N,
+                        "est_lower" = test_freq$diff_lower,
+                        "est" = test_freq$diff,
+                        "est_upper" = test_freq$diff_upper,
+                        "est_se" = test_freq$diff_se,
+                        "Z_test" = test_freq$Z_test,
+                        "Z_crit" = test_freq$Z_crit,
+                        "I" = test_freq$I,
+                        "rejectH0" = test_freq$rejectH0,
+                        "ppos" = test_freq$ppos)
 
   # Assign the dynamic column names
   names(trt_est)[names(trt_est) == "est_lower"] <- paste0("est_", sub("0\\.", "", 1 - gamma))
@@ -502,42 +621,38 @@ eval_superiority_mcmc <- function(data, margin, gamma) {
 
 
 
-prepare_jags_ppos <- function(dat, gamma) {
+prepare_jags_ppos <- function(dat, gamma, margin = 0, trt_ref = "Placebo") {
+
   model_string <- "model {\n"
 
-  treatments <-  unique(dat$trt)
 
-  for (treat in treatments) {
-    model_string <- paste0(model_string, "   for (i in 1:length(Y", treat, ")) {\n")
-    model_string <- paste0(model_string, "      Y", treat, "[i] ~ dnorm(mu[", treat, "], prec[", treat, "])\n")
-    model_string <- paste0(model_string, "   }\n")
-    model_string <- paste0(model_string, "   mu[", treat,"] ~ dnorm(0, 0.001)\n")
-    model_string <- paste0(model_string, "   prec[", treat,"] ~ dgamma(0.001, 0.001)\n")
-    model_string <- paste0(model_string, "   sigma[", treat,"] <- 1 / sqrt(prec[", treat,"])\n\n")
+  model_string <- paste0(model_string, "   for (i in 1:length(Yc)) {\n")
+  model_string <- paste0(model_string, "      Yc[i] ~ dnorm(mu_c, prec_c)\n")
+  model_string <- paste0(model_string, "   }\n")
+  model_string <- paste0(model_string, "   for (i in 1:length(Yt)) {\n")
+  model_string <- paste0(model_string, "      Yt[i] ~ dnorm(mu_t, prec_t)\n")
+  model_string <- paste0(model_string, "   }\n")
+  model_string <- paste0(model_string, "   mu_c ~ dnorm(0, 0.001)\n")
+  model_string <- paste0(model_string, "   prec_c ~ dgamma(0.001, 0.001)\n")
+  model_string <- paste0(model_string, "   sigma_c <- 1 / sqrt(prec_c)\n\n")
+  model_string <- paste0(model_string, "   mu_t ~ dnorm(0, 0.001)\n")
+  model_string <- paste0(model_string, "   prec_t ~ dgamma(0.001, 0.001)\n")
+  model_string <- paste0(model_string, "   sigma_t <- 1 / sqrt(prec_t)\n\n")
 
-    if (treat > 1) {
-      model_string <- paste0(model_string, "   trteff[", treat, "] <- mu[", treat, "] - mu[1]\n")
-      model_string <- paste0(model_string, "   tau[", treat, "] <- sqrt(sigma[", treat, "]**2/length(Y", treat, ") + sigma[1]**2/length(Y1))\n")
-      model_string <- paste0(model_string, "   ppos[", treat, "] <- trteff[", treat, "] > tau[", treat, "]*z_alpha\n\n")
-    }
-  }
-
-  # See https://www.math.chalmers.se/Stat/Grundutb/GU/MSA620/S20/Assurance.pdf
-
+  model_string <- paste0(model_string, "   trteff<- mu_t - mu_c - ", margin, "\n")
+  model_string <- paste0(model_string, "   tau <- sqrt(sigma_c**2/length(Yc) + sigma_t**2/length(Yt))\n")
+  model_string <- paste0(model_string, "   ppos <- trteff > tau*z_alpha\n\n")
   model_string <- paste0(model_string, "}")
 
   # Split the data frame by 'trt' and extract the 'Y' values
-  Y_list <- split(dat$Y, dat$trt)
+  Y_list <- split(dat$Y, dat$Treatment)
 
   # Rename the list elements to Y1, Y2, Y3, etc.
-  names(Y_list) <- paste0("Y", names(Y_list))
-
-  # Remove empty elements
-  Y_list <- Y_list[sapply(Y_list, length) > 0]
+  names(Y_list) <-  ifelse(names(Y_list) == trt_ref, "Yc", "Yt")
 
   Y_list$z_alpha <- qnorm(gamma)
 
-  variable.names =  c("trteff", "mu", "sigma", "ppos")
+  variable.names =  c("trteff", "mu_c", "mu_t", "sigma_c", "sigma_t", "ppos")
 
 
   return(list(model_string = model_string, jags_data = Y_list,

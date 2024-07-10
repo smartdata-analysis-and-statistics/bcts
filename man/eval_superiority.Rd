@@ -12,7 +12,8 @@ eval_superiority(
   num_chains = 4,
   n.adapt = 500,
   n.iter = 1000,
-  perc_burnin = 0.2
+  perc_burnin = 0.2,
+  trt_ref = "Placebo"
 )
 }
 \arguments{
@@ -22,6 +23,8 @@ eval_superiority(
 
 \item{gamma}{Level to declare success (default: 0.975)}
 
+\item{method}{Method to evaluate superiority (Choose 'mcmc' or 'bayes')}
+
 \item{num_chains}{The number of parallel chains for the model}
 
 \item{n.adapt}{The number of iterations for adaptation.}
@@ -29,6 +32,8 @@ eval_superiority(
 \item{n.iter}{The number of iterations to monitor}
 
 \item{perc_burnin}{The percentage of iterations to keep for burn-in}
+
+\item{trt_ref}{Reference treatment name}
 }
 \value{
 A dataframe with results from the evaluation
