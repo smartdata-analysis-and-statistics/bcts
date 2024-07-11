@@ -334,7 +334,7 @@ bcts_without_typeI <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank
 #' @importFrom rlang .data
 bcts <- function(n_int = 60,
                  n_pln = 20 + 65*2,
-                      n_max = 20 + 80*2,
+                 n_max = 20 + 80*2,
                       mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5),
                       sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1),
                       trt_ref = "Placebo",
