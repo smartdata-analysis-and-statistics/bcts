@@ -109,26 +109,12 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
 #' @importFrom binom binom.confint
 #' @importFrom rlang .data
 #'
-bcts_without_typeI <- function(n_int = 60,
-                               n_pln = 20 + 65*2,
-                               n_max = 20 + 80*2,
-                               mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5),
-                               sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1),
-                               trt_ref = "Placebo",
-                               trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
-                               prioritize_low_rank = TRUE,
-                               gamma = 0.975, #0.98   %
-                               th.fut = 0.2, ##
-                               th.eff = 0.9, ##
-                               th.prom = 0.5, ##
-                               method = "mcmc",
-                               nsim = 1000, #
-                               num_chains = 4,
-                               n.iter = 5000, #
-                               n.adapt = 500,
-                               perc_burnin = 0.2, # How many n.iter should be reserved for burnin?
+bcts_without_typeI <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
+                               prioritize_low_rank = TRUE, gamma = 0.975,
+                               th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
+                               method = "mcmc", nsim = 1000, num_chains = 4,
+                               n.iter = 5000, n.adapt = 500, perc_burnin = 0.2,
                                progress.bar = "text") {
-
 
   # Sample the random seeds
   seeds <- sample(seq(nsim*10,nsim*20), size = nsim)
@@ -152,6 +138,7 @@ bcts_without_typeI <- function(n_int = 60,
                            est.final = NA,
                            est_lower.final = NA,
                            est_se.final = NA,
+                           est_upper.final = NA,
                            rejectH0.final = NA)
 
   n.interim <- n.final <- data.frame(sim = numeric(), Treatment = character(), n = integer(), stringsAsFactors = FALSE)
@@ -241,6 +228,7 @@ bcts_without_typeI <- function(n_int = 60,
         simresults$sel.dose[i] <- names(ppos)[which.max(ppos)]
         simresults$sel.dose.ppos[i] <- max(ppos)
         if (max(ppos) >= th.eff) {
+          # Required sample size increase reached
           break;
         }
       }
@@ -286,6 +274,7 @@ bcts_without_typeI <- function(n_int = 60,
 
     simresults$est.final[i] <- result_fin$est
     simresults$est_lower.final[i] <-  result_fin[paste0("est_", sub("0\\.", "", 1 - gamma))]
+    simresults$est_upper.final[i] <-  result_fin[paste0("est_", sub("0\\.", "", gamma))]
     simresults$est_se.final[i] <- result_fin$est_se
     simresults$rejectH0.final[i] <- result_fin$rejectH0
 
@@ -344,7 +333,7 @@ bcts_without_typeI <- function(n_int = 60,
 #' @importFrom dplyr %>%
 #' @importFrom rlang .data
 bcts <- function(n_int = 60,
-                      n_pln = 20 + 65*2,
+                 n_pln = 20 + 65*2,
                       n_max = 20 + 80*2,
                       mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5),
                       sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1),
@@ -554,11 +543,21 @@ eval_superiority_bayes <- function(data, margin, gamma, trt_ref = "Placebo", num
   psample_int <- as.data.frame(do.call(rbind, fit_jags_int))
 
   mudiff <- psample_int %>% pull(paste0("trteff"))
+  mu_t <- psample_int %>% pull(paste0("mu_t"))
+  mu_c <- psample_int %>% pull(paste0("mu_c"))
+  sigma_t <- psample_int %>% pull(paste0("sigma_t"))
+  sigma_c <- psample_int %>% pull(paste0("sigma_c"))
   PPOS <- psample_int %>% pull(paste0("ppos"))
 
   trt_est <- data.frame("Treatment" = setdiff(data$Treatment, trt_ref),
+                        "n_t" = length(jags.config$jags_data$Yt),
+                        "n_c" = length(jags.config$jags_data$Yc),
                         "n" = sum(!is.na(data$Y)),
-                        "N" =  nrow(data),
+                        "N" = nrow(data),
+                        "mu_hat_t" = mean(mu_t),
+                        "mu_hat_c" = mean(mu_c),
+                        "sigma_hat_t" = mean(sigma_t),
+                        "sigma_hat_c" = mean(sigma_c),
                         "est_lower" = quantile(mudiff, 1 - gamma),
                         "est" = mean(mudiff),
                         "est_upper" = quantile(mudiff, gamma),
@@ -600,8 +599,14 @@ eval_superiority_mcmc <- function(data, margin = 0, gamma = 0.975, trt_ref = "Pl
                               alternative = "superiority")
 
   trt_est <- data.frame("Treatment" = trt_act,
+                        "n_t" = length(Yt),
+                        "n_c" = length(Yc),
                         "n" = n,
                         "N" = N,
+                        "mu_hat_t" = mean(Yt),
+                        "mu_hat_c" = mean(Yc),
+                        "sigma_hat_t" = sd(Yt),
+                        "sigma_hat_c" = sd(Yc),
                         "est_lower" = test_freq$diff_lower,
                         "est" = test_freq$diff,
                         "est_upper" = test_freq$diff_upper,

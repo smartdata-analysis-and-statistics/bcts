@@ -53,6 +53,7 @@ sim98 <- bcts(n_int = 20*3,
                    n_max = 20 + 80*2,
                    mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
                    sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+              trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
                    trt_ref = "Placebo",
                   prioritize_low_rank = TRUE, gamma = 0.98, #   %
                   method = "mcmc",
@@ -71,6 +72,7 @@ sim98b <- bcts(n_int = 20*3,
               n_max = 20 + 80*2,
               mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
               sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+              trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
               trt_ref = "Placebo",
               prioritize_low_rank = TRUE, gamma = 0.98, #   %
               method = "bayes",
@@ -81,7 +83,7 @@ sim98b <- bcts(n_int = 20*3,
               n.adapt = 500,
               perc_burnin = 0.2,
               progress.bar = "text")
-saveRDS(sim98, file = "CIPO/gamma98N20.65.80.rds")
+saveRDS(sim98b, file = "CIPO/gamma98bN20.65.80.rds")
 
 
 
