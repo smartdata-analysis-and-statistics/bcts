@@ -44,3 +44,21 @@ sim_rct_normal <- function(n,
   return(dat)
 }
 
+#' Monte Carlo error for a proportion
+#'
+#' @param x Observed event count
+#' @param n Total number of Monte Carlo Simulations
+#' @param level Confidence level
+#'
+#' @importFrom rlang .data
+mc_error_proportion <- function(x, n, level) {
+  out <- data.frame(x = x,
+                    n = n,
+                    est = x/n) %>% dplyr::mutate(
+    se = sqrt((.data$est*(1 - .data$est))/n),
+    lower = .data$est + stats::qnorm((1 - level)/2)*.data$se,
+    upper = .data$est + stats::qnorm( 1 - (1 - level)/2)*.data$se)
+
+  return(out)
+}
+

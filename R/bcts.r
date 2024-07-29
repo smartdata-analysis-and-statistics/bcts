@@ -109,15 +109,15 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
 #' @importFrom binom binom.confint
 #' @importFrom rlang .data
 #'
-bcts_without_typeI <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
-                               prioritize_low_rank = TRUE, gamma = 0.975,
-                               th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
-                               method = "mcmc", nsim = 1000, num_chains = 4,
-                               n.iter = 5000, n.adapt = 500, perc_burnin = 0.2,
-                               progress.bar = "text") {
+bcts <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
+                 prioritize_low_rank = TRUE, gamma = 0.975,
+                 th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
+                 method = "mcmc", nsim = 1000, num_chains = 4,
+                 n.iter = 5000, n.adapt = 500, perc_burnin = 0.2,
+                 progress.bar = "text") {
 
   # Sample the random seeds
-  seeds <- sample(seq(nsim*10,nsim*20), size = nsim)
+  seeds <- seq(nsim)
 
   n_arms <- length(mu)
 
@@ -175,7 +175,7 @@ bcts_without_typeI <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank
                                 sd = sigma[c(trt_ref, trt_act_i)],
                                 trtnames = c(trt_ref, trt_act_i))
       dat_xtr$Y <- NA
-      dat_pln <- rbind(dat_int %>% filter(.data$Treatment %in% c(trt_ref, trt_act_i)), dat_xtr)
+      dat_pln <- rbind(dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, trt_act_i)), dat_xtr)
       dat_pln$Treatment <- droplevels(dat_pln$Treatment)
 
       result_pln <- eval_superiority(dat_pln, margin = 0, gamma = gamma,
@@ -213,7 +213,7 @@ bcts_without_typeI <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank
                                     sd = sigma[c(trt_ref, trt_act_i)],
                                     trtnames = c(trt_ref, trt_act_i))
           dat_xtr$Y <- NA
-          dat_pln <- rbind(dat_int %>% filter(.data$Treatment %in% c(trt_ref, trt_act_i)), dat_xtr)
+          dat_pln <- rbind(dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, trt_act_i)), dat_xtr)
           dat_pln$Treatment <- droplevels(dat_pln$Treatment)
 
           result_pln <- eval_superiority(dat_pln, margin = 0, gamma = gamma,
@@ -264,7 +264,7 @@ bcts_without_typeI <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank
       dplyr::mutate(sim = i)
     n.final <- dplyr::bind_rows(n.final , n_fin_summary_data)
 
-    dat_fin <- rbind(dat_int %>% filter(.data$Treatment %in% c(trt_ref, simresults$sel.dose[i])), dat_xtr)
+    dat_fin <- rbind(dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, simresults$sel.dose[i])), dat_xtr)
     dat_fin$Treatment <- droplevels(dat_fin$Treatment)
 
     result_fin <- eval_superiority(data = dat_fin, margin = 0, gamma = gamma,
@@ -289,9 +289,11 @@ bcts_without_typeI <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank
 
   names(simresults)[names(simresults) == "est_lower.final"] <- paste0("est_", sub("0\\.", "", 1 - gamma), ".final")
 
-  out <- list(mu = mu,
+  out <- list(trt_ref = trt_ref,
+              mu = mu,
               sigma = sigma,
               gamma = gamma,
+              nsim = nsim,
               n.interim = n.interim,
               n.final = n.final,
               simresults = simresults
@@ -300,6 +302,264 @@ bcts_without_typeI <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank
   class(out) <- "bcts"
   return(out)
 }
+
+#' Plot posterior distribution of the mean outcome
+#'
+#' Function to plot the posterior distribution of the mean outcome in the selected treatment arm
+#'
+#' @param \dots Additional arguments, which are currently ignored.
+#' @return A \code{ggplot2} object.
+#'
+#' @details This is a generic function.
+#'
+#' @export posterior
+posterior <- function(...) {
+  UseMethod("posterior")
+}
+
+
+#' Plot selected dose
+#'
+#' @param \dots Additional arguments, which are currently ignored.
+#' @return A \code{ggplot2} object.
+#'
+#' @details This is a generic function.
+#'
+#' @export plotSelDose
+plotSelDose <- function(...) {
+  UseMethod("plotSelDose")
+}
+
+#' Plot the final sample size
+#'
+#' @param \dots Additional arguments, which are currently ignored.
+#' @return A \code{ggplot2} object.
+#'
+#' @details This is a generic function.
+#'
+#' @export plotFinalSampleSize
+plotFinalSampleSize  <- function(...) {
+  UseMethod("plotFinalSampleSize")
+}
+
+#' Print bcts output
+#'
+#' @param x An object of class bcts
+#' @param ... Optional arguments
+#'
+#' @export
+#'
+#' @importFrom binom binom.confint
+#' @importFrom dplyr %>%
+#' @importFrom rlang .data
+print.bcts <- function(x, ...) {
+
+  conf.level <- 0.95
+
+  ## Get quantiles of final sample size
+  n_fin_qt <- stats::quantile(x$simresults$n.final, c((1 - conf.level)/2, 1 - (1 - conf.level)/2))
+
+  n_fin_by_arm <- x$n.final %>%
+    dplyr::group_by(.data$Treatment) %>%
+    dplyr::summarize(est = mean(.data$n),
+                     cil = quantile(.data$n, (1 - conf.level)/2),
+                     ciu = quantile(.data$n, 1 - (1 - conf.level)/2)) %>%
+    dplyr::mutate(statistic = paste0("N final (", .data$Treatment, ")")) %>%
+    dplyr::select(-"Treatment")
+
+  n_select_arm <- x$simresults %>%
+    dplyr::group_by(.data$sel.dose) %>%
+    dplyr::summarize(n = dplyr::n()) %>%
+    dplyr::mutate(statistic = paste0("Pr(select ", .data$sel.dose, ")"),
+                  est = .data$n/nrow(x$simresults),
+                  cil = binom.confint(x = .data$n,
+                                        n = nrow(x$simresults),
+                                        methods = "exact", conf.level = conf.level)$lower,
+                    ciu = binom.confint(x = .data$n,
+                                        n = nrow(x$simresults),
+                                        methods = "exact", conf.level = conf.level)$upper) %>%
+    dplyr::select(-c("sel.dose", "n"))
+
+  power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final),
+                               n = nrow(x$simresults),
+                               level = conf.level)
+
+  fut.trig <- mc_error_proportion(x = sum(x$simresults$fut.trig),
+                                  n = nrow(x$simresults),
+                                  level = conf.level)
+
+  inc.ss <- mc_error_proportion(x = sum(x$simresults$inc.ss),
+                                n = nrow(x$simresults),
+                                level = conf.level)
+
+  out <- data.frame(statistic = character(),
+                      est = numeric(),
+                      cil = numeric(),
+                      ciu = numeric())
+  out <- out %>% add_row(data.frame(statistic = "Power",
+                                      est = power$est,
+                                      cil = power$lower,
+                                      ciu = power$upper))
+    out <- out %>% add_row(data.frame(statistic = "Pr(fut.trig)",
+                                      est = fut.trig$est,
+                                      cil = fut.trig$lower,
+                                      ciu = fut.trig$upper))
+    out <- out %>% add_row(data.frame(statistic = "Pr(inc.ss)",
+                                      est = inc.ss$est,
+                                      cil = inc.ss$lower,
+                                      ciu = inc.ss$upper))
+    out <- out %>% add_row(data.frame(statistic = "N final",
+                                      est = mean(x$simresults$n.final),
+                                      cil = n_fin_qt[1],
+                                      ciu = n_fin_qt[2]))
+    out <- out %>% add_row(n_fin_by_arm)
+    out <- out %>% add_row(n_select_arm)
+    print(out)
+}
+
+
+
+#' Plot simulation results
+#'
+#' @param x An object of class bcts
+#' @param ... Optional arguments
+#'
+#' @export
+#'
+#' @import ggplot2
+#' @importFrom dplyr %>%
+#' @importFrom rlang .data
+plot.bcts <- function(x, ...) {
+  conf.level <- 0.95
+
+  power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final),
+                               n = nrow(x$simresults),
+                               level = conf.level)
+
+  fut.trig <- mc_error_proportion(x = sum(x$simresults$fut.trig),
+                                  n = nrow(x$simresults),
+                                  level = conf.level)
+
+  inc.ss <- mc_error_proportion(x = sum(x$simresults$inc.ss),
+                                n = nrow(x$simresults),
+                                level = conf.level)
+
+  out <- data.frame(statistic = character(),
+                    est = numeric(),
+                    cil = numeric(),
+                    ciu = numeric())
+
+  out <- out %>% add_row(data.frame(statistic = "Power",
+                                    est = power$est,
+                                    cil = power$lower,
+                                    ciu = power$upper))
+  out <- out %>% add_row(data.frame(statistic = "Pr(fut.trig)",
+                                    est = fut.trig$est,
+                                    cil = fut.trig$lower,
+                                    ciu = fut.trig$upper))
+  out <- out %>% add_row(data.frame(statistic = "Pr(inc.ss)",
+                                    est = inc.ss$est,
+                                    cil = inc.ss$lower,
+                                    ciu = inc.ss$upper))
+
+  # Convert to percentages
+  out$est <- out$est * 100
+  out$cil <- out$cil * 100
+  out$ciu <- out$ciu * 100
+
+  ggplot(out, aes(x = .data$statistic, y = .data$est)) +
+    #geom_bar(stat = "identity", alpha = 0.7) +
+    geom_point() +
+    geom_errorbar(aes(ymin = .data$cil, ymax = .data$ciu), width = 0.2) +
+    facet_wrap(~statistic, scales = "free") +
+    labs(x = "Statistic", y = "Estimate (95% CI)") +
+    xlab("") +
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+    theme_minimal() +
+    theme(
+      axis.title.x = element_blank(),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank()
+    ) #+ scale_fill_brewer()
+
+}
+
+#' Plot posterior distribution of the mean outcome
+#'
+#' @param x An object of class bcts
+#' @param ... Optional arguments
+#'
+#' @export
+#'
+#' @import ggplot2
+#' @importFrom rlang .data
+posterior.bcts <- function(x, ...) {
+  ggplot(x$simresults, aes(x = .data$est.final)) +
+    geom_density() +
+    xlab("Mean outcome selected dose")
+}
+
+
+#' Plot selected dose
+#'
+#' @param x An object of class bcts
+#' @param ... Optional arguments
+#'
+#' @export
+#'
+#' @import ggplot2
+#' @importFrom rlang .data
+plotSelDose.bcts <- function(x, ...) {
+
+  # Calculate the percentage for each bar
+  nDose <- x$simresults %>%
+    dplyr::count(.data$sel.dose) %>%
+    mutate(percentage = .data$n / sum(.data$n) * 100)
+
+  # Plot the bar chart with percentage labels
+  ggplot(nDose, aes(x = .data$sel.dose, y = .data$n, fill = .data$sel.dose)) +
+    geom_bar(stat = "identity") +
+    geom_text(aes(label = paste0(round(.data$percentage, 1), "%")), vjust = -0.5) +
+    labs(x = "Selected Dose", y = "Count") +
+    scale_fill_brewer()  +
+    theme(legend.position = "none") +
+    ylim(0,  nrow(x$simresults))
+
+}
+
+#' Plot final sample size
+#'
+#' @param x An object of class bcts
+#' @param ... Optional arguments
+#'
+#' @export
+#'
+#' @import ggplot2
+#' @importFrom rlang .data
+plotFinalSampleSize.bcts <- function(x, ...) {
+
+  # Join n.final with selected treatment
+  #dat <- x$n.final %>% merge(x$simresults %>% select("sim", "sel.dose"))
+
+  #ggplot(dat, aes(x=n, group = Treatment, fill = Treatment)) +
+  #  geom_histogram(col = "black") +
+  #  facet_wrap(~sel.dose) + scale_fill_brewer()
+
+  # Calculate the mean final sample size
+  mean_n_final <- mean(x$simresults$n.final)
+
+  ggplot(x$simresults, aes(x = .data$n.final)) +
+    geom_histogram() +
+    xlab("Final sample size") +
+    ylab("Count") +
+    annotate("text", x = Inf, y = Inf, label = paste("Mean final sample size:", round(mean_n_final, 0)),
+             hjust = 1, vjust = 1, size = 5, color = "black", fontface = "bold") +
+    ylim(0,  nrow(x$simresults))
+}
+
+
+
+
 
 #' Bayesian clinical trial simulation (BCTS)
 #'
@@ -332,7 +592,7 @@ bcts_without_typeI <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank
 #'
 #' @importFrom dplyr %>%
 #' @importFrom rlang .data
-bcts <- function(n_int = 60,
+bcts_EVAL <- function(n_int = 60,
                  n_pln = 20 + 65*2,
                  n_max = 20 + 80*2,
                       mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5),
@@ -354,7 +614,7 @@ bcts <- function(n_int = 60,
                       summary.conf.level = 0.95, # Confidence level for summary estimates of interest
                       progress.bar = "text") {
 
-  sim_power <- bcts_without_typeI(n_int = n_int, n_pln = n_pln, n_max = n_max,
+  sim_power <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
                                   mu = mu, sigma = sigma, #
                                   trt_ref = trt_ref,
                                   trt_rank = trt_rank,
@@ -370,7 +630,7 @@ bcts <- function(n_int = 60,
     # Evaluate type-I error
     mu_type1 <- mu
     mu_type1[] <- 0
-    sim_type1 <- bcts_without_typeI(n_int = n_int, n_pln = n_pln, n_max = n_max,
+    sim_type1 <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
                                     mu = mu_type1, sigma = sigma, #
                                     trt_ref = trt_ref,
                                     trt_rank = trt_rank,
@@ -479,7 +739,8 @@ eval_superiority <- function(data,
                              gamma, #0.975
                              method,
                              num_chains = 4,
-                             n.adapt = 500, n.iter = 1000, perc_burnin = 0.2, trt_ref = "Placebo") {
+                             n.adapt = 500, n.iter = 1000, perc_burnin = 0.2,
+                             trt_ref = "Placebo") {
 
   treatments <- unique(data$Treatment)
   if (length(treatments) != 2) {
@@ -550,8 +811,8 @@ eval_superiority_bayes <- function(data, margin, gamma, trt_ref = "Placebo", num
   PPOS <- psample_int %>% pull(paste0("ppos"))
 
   trt_est <- data.frame("Treatment" = setdiff(data$Treatment, trt_ref),
-                        "n_t" = length(jags.config$jags_data$Yt),
-                        "n_c" = length(jags.config$jags_data$Yc),
+                        "n_t" = length(!is.na(jags.config$jags_data$Yt)),
+                        "n_c" = length(!is.na(jags.config$jags_data$Yc)),
                         "n" = sum(!is.na(data$Y)),
                         "N" = nrow(data),
                         "mu_hat_t" = mean(mu_t),
@@ -583,14 +844,15 @@ eval_superiority_bayes <- function(data, margin, gamma, trt_ref = "Placebo", num
 #' @param trt_ref Reference treatment name
 #'
 #' @return A data frame with the results from the evaluation
+#'
 #' @importFrom rlang .data
 eval_superiority_mcmc <- function(data, margin = 0, gamma = 0.975, trt_ref = "Placebo") {
 
   trt_act <-  setdiff(data$Treatment, trt_ref)
   n <-  sum(!is.na(data$Y))
   N <-  nrow(data)
-  Yc <- data %>% filter(.data$Treatment == trt_ref & !is.na(.data$Y)) %>% pull("Y")
-  Yt <- data %>% filter(.data$Treatment == trt_act & !is.na(.data$Y)) %>% pull("Y")
+  Yc <- data %>% dplyr::filter(.data$Treatment == trt_ref & !is.na(.data$Y)) %>% pull("Y")
+  Yt <- data %>% dplyr::filter(.data$Treatment == trt_act & !is.na(.data$Y)) %>% pull("Y")
 
   test_freq <- pow_diff_means(n1 = length(Yt), n2 = length(Yc), N = N,
                               mu1 = mean(Yt), mu2 = mean(Yc), margin = 0,

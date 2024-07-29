@@ -22,13 +22,14 @@ Imports:
     stats,
     utils,
     rlang,
-    randomizeR
+    randomizeR,
+    scales,
+    ggplot2
 Suggests: 
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
     tinytest,
-    ggplot2,
     kableExtra,
     tibble
 VignetteBuilder: knitr
