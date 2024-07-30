@@ -32,6 +32,11 @@ sim_rct_normal <- function(n,
                     Y = NA
                     )
 
+  if (any(is.na(c(mean,sd)))) {
+    dat <- dat %>% mutate(Treatment = factor(.data$Treatment))
+    return(dat)
+  }
+
 
   # Create a data frame to store the simulated trial data
   for (trt in seq(trtnames)) {
@@ -40,7 +45,6 @@ sim_rct_normal <- function(n,
   }
   dat <- dat %>% mutate(Treatment = factor(.data$Treatment))
 
-  # Select n top records
   return(dat)
 }
 

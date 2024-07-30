@@ -84,7 +84,6 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
 #' @param prioritize_low_rank  If multiple treatments have a posterior predictive power > 'th.eff', the treatment with lowest rank
 #' will be selected at interim
 #' @param gamma Level to declare success. For a fixed design, gamma is typically chosen as 0.975 for a one-sided type-I error rate of 2.5%. However, an increase is usually needed because of dose selection.
-#' @param method Analysis method. Choose 'mcmc' or 'bayes'
 #' @param th.fut Futility threshold for the predictive power calculated conditioned on the interim data
 #' @param th.eff Efficacy threshold for the predictive power calculated conditioned on the interim data
 #' @param th.prom Predictive power threshold that would trigger sample size increase
@@ -165,8 +164,8 @@ bcts <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
       dplyr::mutate(sim = i)
     n.interim <- dplyr::bind_rows(n.interim , n_int_summary_data)
 
-    ri <- eval_adaptive_trial(dat_int = dat_int, n_pln = n_pln, n_max = n_max,
-                              mu = mu, sigma = sigma, trt_ref = trt_ref,
+    ri <- dose_selection(dat_int = dat_int, n_pln = n_pln, n_max = n_max,
+                         trt_ref = trt_ref,
                               trt_active = trt_active, trt_rank = trt_rank,
                               prioritize_low_rank = prioritize_low_rank,
                               gamma = gamma, th.fut = th.fut, th.eff = th.eff,
@@ -223,6 +222,7 @@ bcts <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
               sigma = sigma,
               gamma = gamma,
               nsim = nsim,
+              method = method,
               n.interim = n.interim,
               n.final = n.final,
               simresults = simresults
@@ -662,30 +662,33 @@ eval_superiority_mcmc <- function(data, margin = 0, gamma = 0.975, trt_ref = "Pl
   return(trt_est)
 }
 
-#' Title
+#' Apply dose selection at interim
 #'
-#' @param n_int
-#' @param n_pln
-#' @param n_max
-#' @param mu
-#' @param sigma
-#' @param trt_ref
-#' @param trt_rank
-#' @param prioritize_low_rank
-#' @param gamma
-#' @param th.fut
-#' @param th.eff
-#' @param th.prom
-#' @param nsim
-#' @param num_chains
-#' @param n.iter
-#' @param n.adapt
-#' @param perc_burnin
+#' @param dat_int Observed data at the interim stage
+#' @param n_pln Planned sample size
+#' @param n_max Maximum sample size
+#' @param trt_ref Character denoting the control treatment
+#' @param trt_active Character vector denoting the active treatment names
+#' @param trt_rank Named vector with preference ranking for each treatment (e.g., lower doses are preferred)
+#' @param prioritize_low_rank  If multiple treatments have a posterior predictive power > 'th.eff', the treatment with lowest rank
+#' will be selected at interim
+#' @param gamma Level to declare success. For a fixed design, gamma is typically chosen as 0.975 for a one-sided type-I error rate of 2.5%. However, an increase is usually needed because of dose selection.
+#' @param th.fut Futility threshold for the predictive power calculated conditioned on the interim data
+#' @param th.eff Efficacy threshold for the predictive power calculated conditioned on the interim data
+#' @param th.prom Predictive power threshold that would trigger sample size increase
+#' @param method Method to estimate the power. Choose "bayes" for a fully Bayesian approach or "mcmc" for a frequentist approximation.
+#' @param num_chains Number of MCMC chains
+#' @param n.iter Number of MCMC iterations for estimation
+#' @param n.adapt Number of MCMC iterations for adaptation
+#' @param perc_burnin How many n.iter should be reserved for burnin?
 #'
-#' @return
+#' @return A list with PPoS and a dataframe containing information on the selected dose and final sample size
 #'
-eval_adaptive_trial <- function(dat_int, n_pln, n_max, mu, sigma, trt_ref, trt_active,
-                                trt_rank,
+#' @export
+#'
+#' @importFrom rlang .data
+dose_selection <- function(dat_int, n_pln, n_max, trt_ref, trt_active,
+                           trt_rank,
                                 prioritize_low_rank = TRUE, gamma = 0.975,
                                 th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
                                 method = "mcmc", num_chains = 4,
@@ -698,10 +701,9 @@ eval_adaptive_trial <- function(dat_int, n_pln, n_max, mu, sigma, trt_ref, trt_a
   for (trt_act_i in trt_active) {
 
     dat_xtr <- sim_rct_normal(n = n_pln - nrow(dat_int),
-                              mean = mu[c(trt_ref, trt_act_i)],
-                              sd = sigma[c(trt_ref, trt_act_i)],
+                              mean = rep(NA,2),
+                              sd = rep(NA,2),
                               trtnames = c(trt_ref, trt_act_i))
-    dat_xtr$Y <- NA
     dat_pln <- rbind(dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, trt_act_i)), dat_xtr)
     dat_pln$Treatment <- droplevels(dat_pln$Treatment)
 
@@ -734,10 +736,9 @@ eval_adaptive_trial <- function(dat_int, n_pln, n_max, mu, sigma, trt_ref, trt_a
       ppos_eval <- setNames(rep(NA, length(trt_active)), trt_active)
       for (trt_act_i in trt_active) {
         dat_xtr <- sim_rct_normal(n = n_pln_new - nrow(dat_int),
-                                  mean = mu[c(trt_ref, trt_act_i)],
-                                  sd = sigma[c(trt_ref, trt_act_i)],
+                                  mean = rep(NA, 2),
+                                  sd = rep(NA, 2),
                                   trtnames = c(trt_ref, trt_act_i))
-        dat_xtr$Y <- NA
         dat_pln <- rbind(dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, trt_act_i)), dat_xtr)
         dat_pln$Treatment <- droplevels(dat_pln$Treatment)
 
