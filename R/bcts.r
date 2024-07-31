@@ -246,6 +246,17 @@ posterior <- function(...) {
   UseMethod("posterior")
 }
 
+#' Extract the power
+#'
+#' @param \dots Optional arguments
+#'
+#' @details This is a generic function.
+#'
+#' @export power
+power <- function(...) {
+  UseMethod("power")
+}
+
 
 #' Plot selected dose
 #'
@@ -426,6 +437,23 @@ posterior.bcts <- function(x, ...) {
   ggplot(x$simresults, aes(x = .data$est.final)) +
     geom_density() +
     xlab("Mean outcome selected dose")
+}
+
+#' Extract the power of a bcts simulation
+#'
+#' @param x An object of class bcts
+#' @param ... Optional arguments
+#'
+#' @export
+#'
+#' @importFrom rlang .data
+power.bcts <- function(x, ...) {
+  conf.level <- 0.95
+
+  power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final),
+                               n = nrow(x$simresults),
+                               level = conf.level)
+  return(power)
 }
 
 

@@ -1,89 +1,105 @@
-# Evaluate type-I error over a grid of gamma
-nsim <- 50000
-gammas <- seq(from = 0.98, to = 0.99, by = 0.001)
+################################################################################
+# Default scenario
+################################################################################
+n_int <- 20*3
+n_pln <- 20 + 65*2
+n_max <- 20 + 80*2
+gamma <- 0.98
+th.fut <- 0.2
+th.eff <- 0.9
+th.prom <- 0.5
 
-results <- data.frame(gamma = numeric(),
-                      statistic = character(),
-                      est = numeric(),
-                      cil = numeric(),
-                      ciu = numeric())
+### Frequentist
+sim <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
+            mu = c("Placebo" = 0, "Velusetrag 15mg" = 0, "Velusetrag 30mg" = 0), #
+            sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+            trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+            trt_ref = "Placebo",
+            prioritize_low_rank = TRUE, gamma = gamma, method = "mcmc",
+            th.fut = th.fut, th.eff = th.eff, th.prom = th.prom, ##
+            nsim = 100000, progress.bar = "text")
+saveRDS(sim, file = "CIPO/sim_type1_G98.N20.65.80.rds")
 
-for (i in seq(gammas)) {
-  sim <- bcts(n_int = 20*3,
-              n_pln = 20 + 65*2,
-              n_max = 20 + 80*2,
-              mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5),
-              sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1),
-              trt_ref = "Placebo",
-              prioritize_low_rank = TRUE, gamma = gammas[i], #   %
-              method = "mcmc",
-              th.fut = 0.2, th.eff = 0.9, th.prom = 0.5, ##
-              nsim = 10000)
-  results <- results %>% add_row(cbind(gamma = gammas[i], sim))
-}
+sim <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
+            mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
+            sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+            trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+            trt_ref = "Placebo",
+            prioritize_low_rank = TRUE, gamma = gamma, method = "mcmc",
+            th.fut = th.fut, th.eff = th.eff, th.prom = th.prom, ##
+            nsim = 10000, progress.bar = "text")
+saveRDS(sim, file = "CIPO/sim_power_G98.N20.65.80.rds")
 
-saveRDS(results, file = "CIPO/sim60.150.180.rds")
+### Bayesian
+sim <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
+            mu = c("Placebo" = 0, "Velusetrag 15mg" = 0, "Velusetrag 30mg" = 0), #
+            sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+            trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+            trt_ref = "Placebo",
+            prioritize_low_rank = TRUE, gamma = gamma, method = "bayes",
+            th.fut = th.fut, th.eff = th.eff, th.prom = th.prom,
+            nsim = 100000, progress.bar = "text")
+saveRDS(sim, file = "CIPO/simb_type1_G98.N20.65.80.rds")
 
-results2 <- data.frame(gamma = numeric(),
-                      statistic = character(),
-                      est = numeric(),
-                      cil = numeric(),
-                      ciu = numeric())
+sim <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
+            mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
+            sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+            trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+            trt_ref = "Placebo",
+            prioritize_low_rank = TRUE, gamma = gamma, method = "bayes",
+            th.fut = th.fut, th.eff = th.eff, th.prom = th.prom,
+            nsim = 10000, progress.bar = "text")
+saveRDS(sim, file = "CIPO/simb_power_G98.N20.65.80.rds")
 
-for (i in seq(gammas)) {
-  sim <- bcts(n_int = 20*3,
-              n_pln = 20 + 70*2,
-              n_max = 20 + 80*2,
-              mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
-              sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
-              trt_ref = "Placebo",
-              prioritize_low_rank = TRUE, gamma = gammas[i], #   %
-              method = "mcmc",
-              th.fut = 0.2, th.eff = 0.9, th.prom = 0.5, ##
-              nsim = 10000)
-  results2 <- results2 %>% add_row(cbind(gamma = gammas[i], sim))
-}
+## Gamma = 0.981
+sim <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
+            mu = c("Placebo" = 0, "Velusetrag 15mg" = 0, "Velusetrag 30mg" = 0), #
+            sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+            trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+            trt_ref = "Placebo",
+            prioritize_low_rank = TRUE, gamma = 0.981, method = "bayes",
+            th.fut = th.fut, th.eff = th.eff, th.prom = th.prom,
+            nsim = 10000, progress.bar = "text")
+saveRDS(sim, file = "CIPO/simb_type1_G981.N20.65.80.rds")
 
-saveRDS(results2, file = "CIPO/sim20.70.80.rds")
+## Gamma = 0.982
+sim <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
+            mu = c("Placebo" = 0, "Velusetrag 15mg" = 0, "Velusetrag 30mg" = 0), #
+            sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+            trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+            trt_ref = "Placebo",
+            prioritize_low_rank = TRUE, gamma = 0.982, method = "bayes",
+            th.fut = th.fut, th.eff = th.eff, th.prom = th.prom,
+            nsim = 10000, progress.bar = "text")
+saveRDS(sim, file = "CIPO/simb_type1_G982.N20.65.80.rds")
 
+## Gamma = 0.983
+sim <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
+            mu = c("Placebo" = 0, "Velusetrag 15mg" = 0, "Velusetrag 30mg" = 0), #
+            sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+            trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+            trt_ref = "Placebo",
+            prioritize_low_rank = TRUE, gamma = 0.983, method = "bayes",
+            th.fut = th.fut, th.eff = th.eff, th.prom = th.prom,
+            nsim = 10000, progress.bar = "text")
+saveRDS(sim, file = "CIPO/simb_type1_G983.N20.65.80.rds")
+sim <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
+            mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
+            sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+            trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+            trt_ref = "Placebo",
+            prioritize_low_rank = TRUE, gamma = 0.983, method = "bayes",
+            th.fut = th.fut, th.eff = th.eff, th.prom = th.prom,
+            nsim = 10000, progress.bar = "text")
+saveRDS(sim, file = "CIPO/simb_power_G983.N20.65.80.rds")
 
-
-sim98 <- bcts(n_int = 20*3,
-                   n_pln = 20 + 65*2,
-                   n_max = 20 + 80*2,
-                   mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
-                   sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
-              trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
-                   trt_ref = "Placebo",
-                  prioritize_low_rank = TRUE, gamma = 0.98, #   %
-                  method = "mcmc",
-                  th.fut = 0.2, th.eff = 0.9, th.prom = 0.5, ##
-                  nsim = 10000,
-                  num_chains = 4,
-                  n.iter = 10, #
-                  n.adapt = 500,
-                  perc_burnin = 0.2,
-                  progress.bar = "text")
-saveRDS(sim98, file = "CIPO/gamma98N20.65.80.rds")
-
-
-sim98b <- bcts(n_int = 20*3,
-              n_pln = 20 + 65*2,
-              n_max = 20 + 80*2,
-              mu = c("Placebo" = 0, "Velusetrag 15mg" = 0.4, "Velusetrag 30mg" = 0.5), #
-              sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
-              trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
-              trt_ref = "Placebo",
-              prioritize_low_rank = TRUE, gamma = 0.98, #   %
-              method = "bayes",
-              th.fut = 0.2, th.eff = 0.9, th.prom = 0.5, ##
-              nsim = 10000,
-              num_chains = 4,
-              n.iter = 10, #
-              n.adapt = 500,
-              perc_burnin = 0.2,
-              progress.bar = "text")
-saveRDS(sim98b, file = "CIPO/gamma98bN20.65.80.rds")
-
-
-
+## Gamma = 0.985
+sim <- bcts(n_int = n_int, n_pln = n_pln, n_max = n_max,
+            mu = c("Placebo" = 0, "Velusetrag 15mg" = 0, "Velusetrag 30mg" = 0), #
+            sigma = c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1), #
+            trt_rank = c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3),
+            trt_ref = "Placebo",
+            prioritize_low_rank = TRUE, gamma = 0.985, method = "bayes",
+            th.fut = th.fut, th.eff = th.eff, th.prom = th.prom,
+            nsim = 10000, progress.bar = "text")
+saveRDS(sim, file = "CIPO/simb_type1_G985.N20.65.80.rds")
