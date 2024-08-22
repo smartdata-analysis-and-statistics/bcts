@@ -100,6 +100,7 @@ pow_diff_means <- function(n1, n2, N, mu1, mu2, margin = 0,
 #' i.e. $Pr(\\mu_t - \\mu_c > 0|D) > $\\gamma$)$.
 #'
 #'
+#' @export
 #' @return An object of class "bcts"
 #'
 #' @importFrom dplyr %>%
@@ -142,6 +143,8 @@ bcts <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
 
   n.interim <- n.final <- data.frame(sim = numeric(), Treatment = character(), n = integer(), stringsAsFactors = FALSE)
 
+  int.ben <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = length(trt_active))), trt_active) #Benefit at interim
+
 
   if (progress.bar == "text") {
     pb <- utils::txtProgressBar(min = 0, max = nsim, initial = 0)
@@ -178,6 +181,9 @@ bcts <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
     simresults$n.final[i] <- ri$result$n.final
     simresults$sel.dose[i] <- ri$result$sel.dose
     simresults$sel.dose.ppos[i] <- ri$result$sel.dose.ppos
+
+    # Efficacy at interim
+    int.ben[i,] <- ri$benefit
 
     # Efficacy analysis in the final dataset
     dat_xtr <- sim_rct_normal(n = simresults$n.final[i] - nrow(dat_int),
@@ -220,11 +226,15 @@ bcts <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
   out <- list(trt_ref = trt_ref,
               mu = mu,
               sigma = sigma,
+              th.fut = th.fut,
+              th.eff = th.eff,
+              th.prom = th.prom,
               gamma = gamma,
               nsim = nsim,
               method = method,
               n.interim = n.interim,
               n.final = n.final,
+              interim = list(benefit = int.ben),
               simresults = simresults
   )
 
@@ -246,40 +256,16 @@ posterior <- function(...) {
   UseMethod("posterior")
 }
 
-#' Extract the power
+#' Extract the power of a bcts simulation
 #'
-#' @param \dots Optional arguments
+#' @param \dots Additional arguments, which are currently ignored.
+#' @return A \code{ggplot2} object.
 #'
 #' @details This is a generic function.
 #'
 #' @export power
 power <- function(...) {
   UseMethod("power")
-}
-
-
-#' Plot selected dose
-#'
-#' @param \dots Additional arguments, which are currently ignored.
-#' @return A \code{ggplot2} object.
-#'
-#' @details This is a generic function.
-#'
-#' @export plotSelDose
-plotSelDose <- function(...) {
-  UseMethod("plotSelDose")
-}
-
-#' Plot the final sample size
-#'
-#' @param \dots Additional arguments, which are currently ignored.
-#' @return A \code{ggplot2} object.
-#'
-#' @details This is a generic function.
-#'
-#' @export plotFinalSampleSize
-plotFinalSampleSize  <- function(...) {
-  UseMethod("plotFinalSampleSize")
 }
 
 #' Print bcts output
@@ -359,91 +345,13 @@ print.bcts <- function(x, ...) {
 
 
 
-#' Plot simulation results
-#'
-#' @param x An object of class bcts
-#' @param ... Optional arguments
-#'
-#' @export
-#'
-#' @import ggplot2
-#' @importFrom dplyr %>%
-#' @importFrom rlang .data
-plot.bcts <- function(x, ...) {
-  conf.level <- 0.95
-
-  power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final),
-                               n = nrow(x$simresults),
-                               level = conf.level)
-
-  fut.trig <- mc_error_proportion(x = sum(x$simresults$fut.trig),
-                                  n = nrow(x$simresults),
-                                  level = conf.level)
-
-  inc.ss <- mc_error_proportion(x = sum(x$simresults$inc.ss),
-                                n = nrow(x$simresults),
-                                level = conf.level)
-
-  out <- data.frame(statistic = character(),
-                    est = numeric(),
-                    cil = numeric(),
-                    ciu = numeric())
-
-  out <- out %>% add_row(data.frame(statistic = "Power",
-                                    est = power$est,
-                                    cil = power$lower,
-                                    ciu = power$upper))
-  out <- out %>% add_row(data.frame(statistic = "Pr(fut.trig)",
-                                    est = fut.trig$est,
-                                    cil = fut.trig$lower,
-                                    ciu = fut.trig$upper))
-  out <- out %>% add_row(data.frame(statistic = "Pr(inc.ss)",
-                                    est = inc.ss$est,
-                                    cil = inc.ss$lower,
-                                    ciu = inc.ss$upper))
-
-  # Convert to percentages
-  out$est <- out$est * 100
-  out$cil <- out$cil * 100
-  out$ciu <- out$ciu * 100
-
-  ggplot(out, aes(x = .data$statistic, y = .data$est)) +
-    #geom_bar(stat = "identity", alpha = 0.7) +
-    geom_point() +
-    geom_errorbar(aes(ymin = .data$cil, ymax = .data$ciu), width = 0.2) +
-    facet_wrap(~statistic, scales = "free") +
-    labs(x = "Statistic", y = "Estimate (95% CI)") +
-    xlab("") +
-    scale_y_continuous(labels = scales::percent_format(scale = 1)) +
-    theme_minimal() +
-    theme(
-      axis.title.x = element_blank(),
-      axis.text.x = element_blank(),
-      axis.ticks.x = element_blank()
-    ) #+ scale_fill_brewer()
-
-}
-
-#' Plot posterior distribution of the mean outcome
-#'
-#' @param x An object of class bcts
-#' @param ... Optional arguments
-#'
-#' @export
-#'
-#' @import ggplot2
-#' @importFrom rlang .data
-posterior.bcts <- function(x, ...) {
-  ggplot(x$simresults, aes(x = .data$est.final)) +
-    geom_density() +
-    xlab("Mean outcome selected dose")
-}
 
 #' Extract the power of a bcts simulation
 #'
 #' @param x An object of class bcts
 #' @param ... Optional arguments
 #'
+#' @method power bcts
 #' @export
 #'
 #' @importFrom rlang .data
@@ -456,63 +364,6 @@ power.bcts <- function(x, ...) {
   return(power)
 }
 
-
-#' Plot selected dose
-#'
-#' @param x An object of class bcts
-#' @param ... Optional arguments
-#'
-#' @export
-#'
-#' @import ggplot2
-#' @importFrom rlang .data
-plotSelDose.bcts <- function(x, ...) {
-
-  # Calculate the percentage for each bar
-  nDose <- x$simresults %>%
-    dplyr::count(.data$sel.dose) %>%
-    mutate(percentage = .data$n / sum(.data$n) * 100)
-
-  # Plot the bar chart with percentage labels
-  ggplot(nDose, aes(x = .data$sel.dose, y = .data$n, fill = .data$sel.dose)) +
-    geom_bar(stat = "identity") +
-    geom_text(aes(label = paste0(round(.data$percentage, 1), "%")), vjust = -0.5) +
-    labs(x = "Selected Dose", y = "Count") +
-    scale_fill_brewer()  +
-    theme(legend.position = "none") +
-    ylim(0,  nrow(x$simresults))
-
-}
-
-#' Plot final sample size
-#'
-#' @param x An object of class bcts
-#' @param ... Optional arguments
-#'
-#' @export
-#'
-#' @import ggplot2
-#' @importFrom rlang .data
-plotFinalSampleSize.bcts <- function(x, ...) {
-
-  # Join n.final with selected treatment
-  #dat <- x$n.final %>% merge(x$simresults %>% select("sim", "sel.dose"))
-
-  #ggplot(dat, aes(x=n, group = Treatment, fill = Treatment)) +
-  #  geom_histogram(col = "black") +
-  #  facet_wrap(~sel.dose) + scale_fill_brewer()
-
-  # Calculate the mean final sample size
-  mean_n_final <- mean(x$simresults$n.final)
-
-  ggplot(x$simresults, aes(x = .data$n.final)) +
-    geom_histogram() +
-    xlab("Final sample size") +
-    ylab("Count") +
-    annotate("text", x = Inf, y = Inf, label = paste("Mean final sample size:", round(mean_n_final, 0)),
-             hjust = 1, vjust = 1, size = 5, color = "black", fontface = "bold") +
-    ylim(0,  nrow(x$simresults))
-}
 
 
 
@@ -724,6 +575,10 @@ dose_selection <- function(dat_int, n_pln, n_max, trt_ref, trt_active,
 
   # Evaluate PPOS for each treatment at the planned sample size
   ppos <- setNames(rep(NA, length(trt_active)), trt_active)
+
+  # Evaluate the effect size for each treatment
+  benefit <- setNames(rep(NA, length(trt_active)), trt_active)
+
   result_final <- data.frame(fut.trig = NA, inc.ss = NA, n.final = NA, sel.dose = "", sel.dose.ppos = NA)
 
   for (trt_act_i in trt_active) {
@@ -741,6 +596,7 @@ dose_selection <- function(dat_int, n_pln, n_max, trt_ref, trt_active,
                                    n.adapt = n.adapt, n.iter = n.iter,
                                    perc_burnin = perc_burnin)
     ppos[trt_act_i] <-  result_pln %>% pull("ppos")
+    benefit[trt_act_i] <- result_pln %>% pull("est")
   }
 
   if (max(ppos) < th.fut) {
@@ -803,7 +659,7 @@ dose_selection <- function(dat_int, n_pln, n_max, trt_ref, trt_active,
   }
 
 
-  return(list(PPoS = ppos, result = result_final))
+  return(list(benefit = benefit, PPoS = ppos, result = result_final))
 }
 
 

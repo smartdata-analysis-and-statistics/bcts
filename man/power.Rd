@@ -2,15 +2,18 @@
 % Please edit documentation in R/bcts.r
 \name{power}
 \alias{power}
-\title{Extract the power}
+\title{Extract the power of a bcts simulation}
 \usage{
 power(...)
 }
 \arguments{
-\item{\dots}{Optional arguments}
+\item{\dots}{Additional arguments, which are currently ignored.}
+}
+\value{
+A \code{ggplot2} object.
 }
 \description{
-Extract the power
+Extract the power of a bcts simulation
 }
 \details{
 This is a generic function.
