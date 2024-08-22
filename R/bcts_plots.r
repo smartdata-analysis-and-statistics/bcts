@@ -22,7 +22,10 @@ plotSelDose <- function(...) {
   UseMethod("plotSelDose")
 }
 
-#' Plot Interim Decisions
+#' Plot Interim Decision Outcomes
+#'
+#' This generic function creates a plot to visualize the interim decision outcomes from adaptive trial simulations.
+#' The specific method used depends on the class of the input object.
 #'
 #' @param \dots Additional arguments, which are currently ignored.
 #' @return A \code{ggplot2} object.
@@ -155,16 +158,32 @@ plotSelDose.bcts <- function(x, ...) {
 
 }
 
-#' Plot interim decisions
+#' Interim Decision Outcomes: Comparative Effect Sizes by Dose
 #'
-#' @param x An object of class bcts
-#' @param ... Optional arguments
+#' Plot Interim Decision Outcomes for bcts Objects
+#'
+#' This method visualizes the interim decision outcomes from adaptive trial simulations for objects of class `bcts`.
+#' It plots the estimated effect sizes of two different doses, with points colored according to the specified decision scheme.
+#'
+#' @param x An object of class `bcts`. This object should contain the simulation results and interim decisions related to dose selection and futility.
+#' @param color_scheme A character string specifying the coloring scheme to be used. Options are "dose_selection" and "trial_decision".
+#'                     The "dose_selection" scheme colors points based on dose selection decisions ("Select dose 1", "Select dose 2", "Futility").
+#'                     The "trial_decision" scheme colors points based on trial decisions ("Continue", "Expand", "Futility").
+#' @param ... Optional arguments.
+#' @return A `ggplot2` object showing the scatter plot of estimated effect sizes for the two doses, colored according to the specified decision scheme.
 #'
 #' @export
 #'
+#' @seealso \code{\link{plotInterimDecisions}} for the generic function.
+#' @author Thomas Debray
+#'
 #' @import ggplot2
 #' @importFrom rlang .data
-plotInterimDecisions.bcts <- function(x, ...) {
+plotInterimDecisions.bcts <- function(x, color_scheme = "dose_selection", ...) {
+
+  if (!"interim" %in% names(x)) {
+    stop("No interim results are available!")
+  }
 
   dose_1 <- colnames(x$interim$benefit)[1]
   dose_2 <- colnames(x$interim$benefit)[2]
@@ -172,20 +191,38 @@ plotInterimDecisions.bcts <- function(x, ...) {
   ben <- x$interim$benefit
   ben$decision <- NA
 
-  ben$decision[which(x$simresults$sel.dose == dose_1)] <- paste("Select", dose_1)
-  ben$decision[which(x$simresults$sel.dose == dose_2)] <- paste("Select", dose_2)
-  ben$decision[which(x$simresults$fut.trig)] <- "Futility"
+  if (color_scheme == "dose_selection") {
+    ben$decision[which(x$simresults$sel.dose == dose_1)] <- paste("Select", dose_1)
+    ben$decision[which(x$simresults$sel.dose == dose_2)] <- paste("Select", dose_2)
+    ben$decision[which(x$simresults$fut.trig)] <- "Futility"
+
+    color_values <- c("Select Velusetrag 15mg" = "#3f88ab",
+                      "Select Velusetrag 30mg" = "#8e1f20",
+                      "Futility" = "#59b559")
+
+  } else if (color_scheme == "trial_decision") {
+    ben$decision[which(!x$simresults$inc.ss)] <- "Continue"
+    ben$decision[which(x$simresults$inc.ss)] <- "Expand"
+    ben$decision[which(x$simresults$fut.trig)] <- "Futility"
+
+    color_values <- c("Continue" = "#59b559",
+                      "Expand" = "#cda026",
+                      "Futility" = "#8e1f20")
+  } else {
+    stop("Invalid color_scheme. Choose 'dose_selection' or 'trial_decision'.")
+  }
 
   x_label <- paste("Estimated benefit", dose_1)
   y_label <- paste("Estimated benefit", dose_2)
 
   # Plot the bar chart with percentage labels
-  ggplot(ben, aes(x = ben[,1], y = ben[,2], color = decision)) + geom_point() +
+  ggplot(ben, aes(x = ben[,1], y = ben[,2], color = .data$decision)) + geom_point() +
     geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
     xlab(x_label) +
     ylab(y_label) +
     theme(legend.position = "top") +
-    guides(colour = guide_legend(title = NULL))
+    guides(colour = guide_legend(title = NULL)) +
+    scale_color_manual(values = color_values)
 }
 
 #' Plot Probability of trial success

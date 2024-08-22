@@ -2,15 +2,32 @@
 % Please edit documentation in R/bcts_plots.r
 \name{plotInterimDecisions.bcts}
 \alias{plotInterimDecisions.bcts}
-\title{Plot interim decisions}
+\title{Interim Decision Outcomes: Comparative Effect Sizes by Dose}
 \usage{
-\method{plotInterimDecisions}{bcts}(x, ...)
+\method{plotInterimDecisions}{bcts}(x, color_scheme = "dose_selection", ...)
 }
 \arguments{
-\item{x}{An object of class bcts}
+\item{x}{An object of class \code{bcts}. This object should contain the simulation results and interim decisions related to dose selection and futility.}
 
-\item{...}{Optional arguments}
+\item{color_scheme}{A character string specifying the coloring scheme to be used. Options are "dose_selection" and "trial_decision".
+The "dose_selection" scheme colors points based on dose selection decisions ("Select dose 1", "Select dose 2", "Futility").
+The "trial_decision" scheme colors points based on trial decisions ("Continue", "Expand", "Futility").}
+
+\item{...}{Optional arguments.}
+}
+\value{
+A \code{ggplot2} object showing the scatter plot of estimated effect sizes for the two doses, colored according to the specified decision scheme.
 }
 \description{
-Plot interim decisions
+Plot Interim Decision Outcomes for bcts Objects
+}
+\details{
+This method visualizes the interim decision outcomes from adaptive trial simulations for objects of class \code{bcts}.
+It plots the estimated effect sizes of two different doses, with points colored according to the specified decision scheme.
+}
+\seealso{
+\code{\link{plotInterimDecisions}} for the generic function.
+}
+\author{
+Thomas Debray
 }

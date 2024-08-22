@@ -2,7 +2,7 @@
 % Please edit documentation in R/bcts_plots.r
 \name{plotInterimDecisions}
 \alias{plotInterimDecisions}
-\title{Plot Interim Decisions}
+\title{Plot Interim Decision Outcomes}
 \usage{
 plotInterimDecisions(...)
 }
@@ -13,7 +13,8 @@ plotInterimDecisions(...)
 A \code{ggplot2} object.
 }
 \description{
-Plot Interim Decisions
+This generic function creates a plot to visualize the interim decision outcomes from adaptive trial simulations.
+The specific method used depends on the class of the input object.
 }
 \details{
 This is a generic function.
