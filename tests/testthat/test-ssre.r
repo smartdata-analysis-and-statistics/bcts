@@ -7,8 +7,6 @@ test_that("Test sample size re-estimation at interim", {
   mu <- c("Placebo" = 0, "Drug A" = 0.5)
   sigma <- c("Placebo" = 1, "Drug A" = 1)
   trt_ref <- "Placebo"
-  n_pln <- 20 + 65*2
-  n_max <- 20 + 80*2
   th.fut <- 0.2
   th.eff <- 0.9
   th.prom <- 0.5
@@ -26,14 +24,13 @@ test_that("Test sample size re-estimation at interim", {
   for (i in 1:nsim) {
 
     # Simulate trial data at interim stage
-    dat_int <- sim_rct_normal(n = 20*2,
+    dat_int <- sim_rct_normal(n = 65*2,
                               mean = mu,
                               sd = sigma,
                               trtnames = trt_names)
 
     resultf[i,] <- ssre(dat_int = dat_int,
-                              n_pln = n_pln,
-                    n_max = n_max,
+                              n_pln = 80*2,
                               trt_ref = trt_ref, trt_active = trt_active,
                               gamma = 1 - alpha/2,
                               th.fut = th.fut, th.eff = th.eff,

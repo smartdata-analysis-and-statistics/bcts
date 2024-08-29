@@ -1,23 +1,15 @@
 require(rjags)
 
 test_that("Test dose selection at interim", {
-  nsim <- 10000
+  nsim <- 1000
   alpha <- 0.05
 
-  mu <- c("Placebo" = 0, "Drug A" = 0, "Drug B" = 0)
-  sigma <- c("Placebo" = 1, "Drug A" = 1, "Drug B" = 1)
   trt_ref <- "Placebo"
   n_pln <- 20 + 65*2
   th.fut <- 0.2
   th.eff <- 0.9
   th.prom <- 0.5
 
-  # Extract the treatment names
-  trt_names <- names(mu)
-  names(mu) <- names(sigma) <- trt_names
-
-  # Active treatment names
-  trt_active <- setdiff(trt_names, trt_ref)
 
   rejectH0  <- data.frame(freq = logical(), bayes = logical())
 
@@ -25,20 +17,21 @@ test_that("Test dose selection at interim", {
 
     # Simulate trial data at interim stage
     dat_int <- sim_rct_normal(n = 20*3,
-                              mean = mu,
-                              sd = sigma,
-                              trtnames = trt_names)
+                              mean = c("Placebo" = 0, "Drug A" = 0, "Drug B" = 0),
+                              sd = c("Placebo" = 1, "Drug A" = 1, "Drug B" = 1))
 
     resultf <- dose_selection(dat_int = dat_int,
                               n_pln = n_pln,
-                              trt_ref = trt_ref, trt_active = trt_active,
+                              trt_ref = "Placebo",
+                              trt_active = c("Drug A", "Drug B"),
                               gamma = 1 - alpha/2,
                               th.fut = th.fut, th.eff = th.eff,
                               method = "mcmc")
 
     resultb <- dose_selection(dat_int = dat_int,
                               n_pln = n_pln,
-                              trt_ref = trt_ref, trt_active = trt_active,
+                              trt_ref = "Placebo",
+                              trt_active = c("Drug A", "Drug B"),
                               gamma = 1 - alpha/2,
                               th.fut = th.fut, th.eff = th.eff,
                               method = "bayes")

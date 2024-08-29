@@ -2,7 +2,6 @@
 #'
 #' @param n_int First interim sample size (for dose selection)
 #' @param n_int2 Second interim sample size (for sample size re-estimation)
-#' @param n_pln Planned sample size
 #' @param n_max Maximum sample size
 #' @param mu Named vector with expected effect sizes
 #' @param sigma Named vector with expected standard deviations
@@ -39,8 +38,8 @@
 #' @importFrom binom binom.confint
 #' @importFrom rlang .data
 #'
-bcts_two_interim <- function(n_int, n_int2, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
-                 prioritize_low_rank = TRUE, gamma = 0.975,
+bcts_two_interim <- function(n_int1, n_int2, n_max, mu, sigma, trt_ref, trt_rank,
+                 prioritize_low_rank = FALSE, gamma = 0.975,
                  th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
                  method = "mcmc", nsim = 1000, num_chains = 4,
                  n.iter = 5000, n.adapt = 500, perc_burnin = 0.2,
@@ -60,7 +59,7 @@ bcts_two_interim <- function(n_int, n_int2, n_pln, n_max, mu, sigma, trt_ref, tr
 
   simresults <- data.frame(sim = seq(nsim),
                            seed = NA,
-                           fut.trig = FALSE,
+                           fut.trig = NA,
                            inc.ss = FALSE,
                            sel.dose = NA,
                            sel.dose.ppos = NA,
@@ -71,10 +70,9 @@ bcts_two_interim <- function(n_int, n_int2, n_pln, n_max, mu, sigma, trt_ref, tr
                            est_upper.final = NA,
                            rejectH0.final = NA)
 
-  n.interim <- n.final <- data.frame(sim = numeric(), Treatment = character(), n = integer(), stringsAsFactors = FALSE)
 
   # Keep track of futility triggering (each column refers to an interim analysis)
-  fut.trig <- data.frame(matrix(NA, nrow = nsim, ncol = 2))
+  fut.trig <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = 2)), c("Int1", "Int2"))
 
   # Keep track of treatment benefit
   int1.ben <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = length(trt_active))), trt_active) #interim 1
@@ -82,7 +80,7 @@ bcts_two_interim <- function(n_int, n_int2, n_pln, n_max, mu, sigma, trt_ref, tr
 
   # Keep track of PPoS
   int1.PPoS <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = length(trt_active))), trt_active) #interim 1
-  int2.PPoS <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = length(trt_active))), trt_active) #interim 2
+  int2.PPoS <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = 2)), c("Interim", "Final")) #interim 2
 
   # Keep track of selected dose at first interim analysis
   sel.dose <- rep("", nsim)
@@ -96,69 +94,54 @@ bcts_two_interim <- function(n_int, n_int2, n_pln, n_max, mu, sigma, trt_ref, tr
     set.seed(seeds[i])
 
     # Simulate trial data at the first interim
-    dat_int <- sim_rct_normal(n = n_int,
+    dat_int1 <- sim_rct_normal(n = n_int1,
                               mean = mu,
                               sd = sigma,
                               trtnames = trt_names)
-
-    # Summarize the data
-    n_int1_summary_data <- dat_int %>%
-      dplyr::group_by(.data$Treatment) %>%
-      dplyr::summarize(n = dplyr::n(), .groups = 'drop') %>%
-      dplyr::mutate(sim = i)
-    n.int1 <- dplyr::bind_rows(n.interim , n_int1_summary_data)
-
-    ri <- dose_selection(dat_int = dat_int, n_pln = n_pln, n_max = n_max,
+    ri <- dose_selection(dat_int = dat_int1, n_pln = n_int2,
                          trt_ref = trt_ref,
                          trt_active = trt_active, trt_rank = trt_rank,
                          prioritize_low_rank = prioritize_low_rank,
                          gamma = gamma, th.fut = th.fut, th.eff = th.eff,
-                         th.prom = th.prom,
                          method = method, num_chains = num_chains,
                          n.iter = n.iter, n.adapt = n.adapt, perc_burnin = perc_burnin)
 
-    fut.trig[i,1] <- ri$result$fut.trig
-    sel.dose[i] <- ri$result$sel.dose
-
-    # Efficacy at interim 1
-    int1.ben[i,] <- ri$benefit
-
-    # PPoS at interim 1
-    int1.PPoS[i, ] <- ri$PPoS
+    fut.trig[i,1] <- ri$fut.trig # Futility triggering at interim 1
+    sel.dose[i] <- ri$sel.dose # Selected dose at interim 1
+    int1.ben[i,] <- ri$benefit # Efficacy at interim 1
+    int1.PPoS[i, ] <- ri$PPoS # PPoS at interim 1
 
     # Continue with interim analysis 2
-    dat_xtr <- sim_rct_normal(n = n_int2 - nrow(dat_int),
+    dat_xtr <- sim_rct_normal(n = n_int2 - nrow(dat_int1),
                               mean = mu[c(trt_ref, sel.dose[i])],
                               sd = sigma[c(trt_ref, sel.dose[i])],
                               trtnames = c(trt_ref, sel.dose[i]))
 
-    # Summarize the data
-    n_int2_summary_data <- rbind(dat_int, dat_xtr) %>%
-      dplyr::group_by(.data$Treatment) %>%
-      dplyr::summarize(n = dplyr::n(), .groups = 'drop') %>%
-      dplyr::mutate(sim = i)
-    n.int2 <- dplyr::bind_rows(n.interim , n_int2_summary_data)
+    dat_int2 <- rbind(dat_int1, dat_xtr)
 
+    ri_ssre <- ssre(dat_int = dat_int2, n_pln = n_max,
+                    trt_ref = trt_ref,
+                    trt_active = sel.dose[i], gamma = gamma, th.fut = th.fut, th.eff = th.eff,
+                         th.prom = th.prom,
+                         method = method, num_chains = num_chains,
+                         n.iter = n.iter, n.adapt = n.adapt, perc_burnin = perc_burnin)
 
-
-
-
-
+    fut.trig[i,2] <- ri_ssre$fut.trig # Futility triggering at interim 2
+    int2.ben[i,] <- ri_ssre$benefit # Efficacy at interim 2
+    int2.PPoS[i, ] <- ri_ssre$PPoS # PPoS at interim 2
 
     # Efficacy analysis in the final dataset
-    dat_xtr <- sim_rct_normal(n = simresults$n.final[i] - nrow(dat_int),
-                              mean = mu[c(trt_ref, simresults$sel.dose[i])],
-                              sd = sigma[c(trt_ref, simresults$sel.dose[i])],
-                              trtnames = c(trt_ref, simresults$sel.dose[i]))
+    if (ri_ssre$N["Final"] > nrow(dat_int2)) {
+      dat_xtr <- sim_rct_normal(n = ri_ssre$N["Final"] - nrow(dat_int2),
+                                mean = mu[c(trt_ref, sel.dose[i])],
+                                sd = sigma[c(trt_ref, sel.dose[i])],
+                                trtnames = c(trt_ref, sel.dose[i]))
+      dat_fin <- rbind(dat_int2, dat_xtr)
+    } else {
+      dat_fin <- dat_int2
+    }
 
-    # Summarize the data
-    n_fin_summary_data <- rbind(dat_int, dat_xtr) %>%
-      dplyr::group_by(.data$Treatment) %>%
-      dplyr::summarize(n = dplyr::n(), .groups = 'drop') %>%
-      dplyr::mutate(sim = i)
-    n.final <- dplyr::bind_rows(n.final , n_fin_summary_data)
-
-    dat_fin <- rbind(dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, simresults$sel.dose[i])), dat_xtr)
+    dat_fin <- dat_fin %>% dplyr::filter(.data$Treatment %in% c(trt_ref, sel.dose[i]))
     dat_fin$Treatment <- droplevels(dat_fin$Treatment)
 
     result_fin <- eval_superiority(data = dat_fin, margin = 0, gamma = gamma,
@@ -166,6 +149,8 @@ bcts_two_interim <- function(n_int, n_int2, n_pln, n_max, mu, sigma, trt_ref, tr
                                    num_chains = num_chains, n.adapt = n.adapt,
                                    n.iter = n.iter, perc_burnin = perc_burnin)
 
+    simresults$fut.trig[i] <- any(fut.trig[i,]) # Was futility triggered in any interim?
+    simresults$inc.ss[i] <- ri_ssre$inc.ss
     simresults$est.final[i] <- result_fin$est
     simresults$est_lower.final[i] <-  result_fin[paste0("est_", sub("0\\.", "", 1 - gamma))]
     simresults$est_upper.final[i] <-  result_fin[paste0("est_", sub("0\\.", "", gamma))]
@@ -192,9 +177,9 @@ bcts_two_interim <- function(n_int, n_int2, n_pln, n_max, mu, sigma, trt_ref, tr
               gamma = gamma,
               nsim = nsim,
               method = method,
-              n.interim = n.interim,
-              n.final = n.final,
-              interim = list(benefit = int.ben),
+              fut.trig = fut.trig,
+              sel.dose = sel.dose,
+              PPos = c("Int1" = int1.PPoS, "Int2" = int2.PPoS),
               simresults = simresults
   )
 
