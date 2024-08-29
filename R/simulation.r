@@ -18,6 +18,13 @@ sim_rct_normal <- function(n,
                            sd,
                            trtnames) {
 
+  if (missing(trtnames)) {
+    if (is.null(names(mean))) {
+      stop("No treatment names provided")
+    }
+    trtnames = names(mean)
+  }
+
   # Generate randomization parameters
   params <- crPar(N = n,
                   K = length(trtnames),

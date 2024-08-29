@@ -1,17 +1,13 @@
 require(rjags)
 
-test_that("Test adaptive dose selection", {
+test_that("Test dose selection at interim", {
   nsim <- 10000
   alpha <- 0.05
 
-  mu <- c("Placebo" = 0, "Velusetrag 15mg" = 0, "Velusetrag 30mg" = 0)
-  sigma <- c("Placebo" = 1, "Velusetrag 15mg" = 1, "Velusetrag 30mg" = 1)
-  trt_rank <- c("Velusetrag 15mg" = 1, "Velusetrag 30mg" = 2, "Placebo" = 3)
+  mu <- c("Placebo" = 0, "Drug A" = 0, "Drug B" = 0)
+  sigma <- c("Placebo" = 1, "Drug A" = 1, "Drug B" = 1)
   trt_ref <- "Placebo"
   n_pln <- 20 + 65*2
-  n_max <- 20 + 80*2
-  gamma <- 0.98
-  prioritize_low_rank <- TRUE
   th.fut <- 0.2
   th.eff <- 0.9
   th.prom <- 0.5
@@ -23,10 +19,7 @@ test_that("Test adaptive dose selection", {
   # Active treatment names
   trt_active <- setdiff(trt_names, trt_ref)
 
-  sigf <- sigb <- rep(NA, nsim)
-
-  inc.ss <- fut.trig  <- data.frame(freq = logical(), bayes = logical())
-  n.final <- data.frame(freq = numeric(), bayes = numeric())
+  rejectH0  <- data.frame(freq = logical(), bayes = logical())
 
   for (i in 1:nsim) {
 
@@ -37,40 +30,32 @@ test_that("Test adaptive dose selection", {
                               trtnames = trt_names)
 
     resultf <- dose_selection(dat_int = dat_int,
-                                   n_pln = n_pln, n_max = n_max,
+                              n_pln = n_pln,
                               trt_ref = trt_ref, trt_active = trt_active,
-                                   trt_rank = trt_rank,
-                                   prioritize_low_rank = prioritize_low_rank, gamma = gamma,
-                                   th.fut = th.fut, th.eff = th.eff, th.prom = th.prom,
-                                   method = "mcmc")
+                              gamma = 1 - alpha/2,
+                              th.fut = th.fut, th.eff = th.eff,
+                              method = "mcmc")
 
     resultb <- dose_selection(dat_int = dat_int,
-                                   n_pln = n_pln, n_max = n_max,
+                              n_pln = n_pln,
                               trt_ref = trt_ref, trt_active = trt_active,
-                                   trt_rank = trt_rank,
-                                   prioritize_low_rank = prioritize_low_rank, gamma = gamma,
-                                   th.fut = th.fut, th.eff = th.eff, th.prom = th.prom,
-                                   method = "bayes",
-                                   num_chains = 4, n.iter = 5000, n.adapt = 500, perc_burnin = 0.2)
+                              gamma = 1 - alpha/2,
+                              th.fut = th.fut, th.eff = th.eff,
+                              method = "bayes")
 
-    inc.ss <- inc.ss %>% add_row(data.frame(freq = resultf$result$inc.ss, bayes = resultb$result$inc.ss))
-    fut.trig <- fut.trig %>% add_row(data.frame(freq = resultf$result$fut.trig, bayes = resultb$result$fut.trig))
-    n.final <- n.final %>% add_row(data.frame(freq = resultf$result$n.final, bayes = resultb$result$n.final))
+    rejectH0 <- rejectH0 %>% add_row(data.frame(freq = resultf$rejectH0, bayes = resultb$rejectH0))
   }
 
-  test.fut.trig <- prop.test(x = colSums(fut.trig), n = rep(nsim, 2), alternative = "two.sided", correct = TRUE)
-  expect_true(test.fut.trig$p.value > alpha,
-              info = paste0("Futility triggering is not equally likely across the estimation methods (",
-                            paste(colMeans(fut.trig), collapse = "; "), ")"))
+  # Test whether type-I error is controlled
+  treat.ci <- mc_error_proportion(x = sum(rejectH0$freq), n = nsim, level = 1 - alpha)
+  expect_true(alpha >= treat.ci$lower & alpha <= treat.ci$upper,
+              info = paste0("Type-I error for treat is not maintained for frequentist analysis (",
+                            round(treat.ci$lower,4), "; ", round(treat.ci$upper,4), ")"))
 
-  test.inc.ss <- prop.test(x = colSums(inc.ss), n = rep(nsim, 2), alternative = "two.sided", correct = TRUE)
-  expect_true(test.inc.ss$p.value > alpha,
-              info = paste0("Sample size increase is not equally likely across the estimation methods (",
-                            paste(colMeans(inc.ss), collapse = "; "), ")"))
+  treat.ci <- mc_error_proportion(x = sum(rejectH0$bayes), n = nsim, level = 1 - alpha)
+  expect_true(alpha >= treat.ci$lower & alpha <= treat.ci$upper,
+              info = paste0("Type-I error for treat is not maintained for Bayesian analysis (",
+                            round(treat.ci$lower,4), "; ", round(treat.ci$upper,4), ")"))
 
-  test.n.final <- t.test(n.final$freq, n.final$bayes, var.equal = FALSE)
-  expect_true(test.n.final$p.value > alpha,
-              info = paste0("Final sample size is not equal across the estimation methods (",
-                            paste(colMeans(n.final), collapse = "; "), ")"))
 
 })
