@@ -1,4 +1,5 @@
 require(rjags)
+require(testthat)
 
 test_that("Test RCT with two interim analyses", {
   nsim <- 10000
@@ -7,7 +8,8 @@ test_that("Test RCT with two interim analyses", {
 
   for (i in 1:nsim) {
 
-    sim <- bcts_two_interim(n_int1 = 60, n_int2 = 150, n_max = 180,
+    sim <- bcts_two_interim(n_int1 = 60, n_int2 = 120,
+                            n_pln = 120, n_max = 180,
                             mu =  c("Placebo" = 0, "Drug A" = 0, "Drug B" = 0),
                             sigma = c("Placebo" = 1, "Drug A" = 1, "Drug B" = 1),
                             trt_ref = "Placebo",

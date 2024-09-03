@@ -143,8 +143,11 @@ bcts <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
 
   n.interim <- n.final <- data.frame(sim = numeric(), Treatment = character(), n = integer(), stringsAsFactors = FALSE)
 
-  int.ben <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = length(trt_active))), trt_active) #Benefit at interim
+  # Keep track of benefit at interim
+  int.ben <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = length(trt_active))), trt_active)
 
+  # Keep track of PPoS at interim
+  int.PPoS <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = length(trt_active))), trt_active)
 
   if (progress.bar == "text") {
     pb <- utils::txtProgressBar(min = 0, max = nsim, initial = 0)
@@ -185,6 +188,9 @@ bcts <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
 
     # Efficacy at interim
     int.ben[i,] <- ri$benefit
+
+    # PPoS at interim
+    int.PPoS[i,] <- ri$PPoS
 
     # Efficacy analysis in the final dataset
     dat_xtr <- sim_rct_normal(n = simresults$n.final[i] - nrow(dat_int),
@@ -236,6 +242,8 @@ bcts <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank,
               n.interim = n.interim,
               n.final = n.final,
               interim = list(benefit = int.ben),
+              PPos = list("Int1" = int.PPoS),
+              benefit = list("Int1" = int.ben),
               simresults = simresults
   )
 
@@ -286,26 +294,6 @@ print.bcts <- function(x, ...) {
   ## Get quantiles of final sample size
   n_fin_qt <- stats::quantile(x$simresults$n.final, c((1 - conf.level)/2, 1 - (1 - conf.level)/2))
 
-  n_fin_by_arm <- x$n.final %>%
-    dplyr::group_by(.data$Treatment) %>%
-    dplyr::summarize(est = mean(.data$n),
-                     cil = quantile(.data$n, (1 - conf.level)/2),
-                     ciu = quantile(.data$n, 1 - (1 - conf.level)/2)) %>%
-    dplyr::mutate(statistic = paste0("N final (", .data$Treatment, ")")) %>%
-    dplyr::select(-"Treatment")
-
-  n_select_arm <- x$simresults %>%
-    dplyr::group_by(.data$sel.dose) %>%
-    dplyr::summarize(n = dplyr::n()) %>%
-    dplyr::mutate(statistic = paste0("Pr(select ", .data$sel.dose, ")"),
-                  est = .data$n/nrow(x$simresults),
-                  cil = binom.confint(x = .data$n,
-                                        n = nrow(x$simresults),
-                                        methods = "exact", conf.level = conf.level)$lower,
-                    ciu = binom.confint(x = .data$n,
-                                        n = nrow(x$simresults),
-                                        methods = "exact", conf.level = conf.level)$upper) %>%
-    dplyr::select(-c("sel.dose", "n"))
 
   power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final),
                                n = nrow(x$simresults),
@@ -339,8 +327,6 @@ print.bcts <- function(x, ...) {
                                       est = mean(x$simresults$n.final),
                                       cil = n_fin_qt[1],
                                       ciu = n_fin_qt[2]))
-    out <- out %>% add_row(n_fin_by_arm)
-    out <- out %>% add_row(n_select_arm)
     print(out)
 }
 

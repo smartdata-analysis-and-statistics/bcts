@@ -219,8 +219,9 @@ dose_selection <- function(dat_int, n_pln, trt_ref, trt_active,
 #'
 #' @param dat_int Observed data at the interim stage
 #' @param n_pln Planned sample size
+#' @param n_max Maximum sample size
 #' @param trt_ref Character denoting the control treatment
-#' @param trt_active Character denoting the active treatment
+#' @param trt_test Character denoting the active treatment
 #' @param gamma Level to declare success. For a fixed design, gamma is typically chosen as 0.975 for a one-sided type-I error rate of 2.5%. However, an increase is usually needed because of dose selection.
 #' @param th.fut Futility threshold for the predictive power calculated conditioned on the interim data
 #' @param th.eff Efficacy threshold for the predictive power calculated conditioned on the interim data
@@ -236,15 +237,20 @@ dose_selection <- function(dat_int, n_pln, trt_ref, trt_active,
 #' @export
 #'
 #' @importFrom rlang .data
-ssre <- function(dat_int, n_pln, trt_ref, trt_active,
+ssre <- function(dat_int, n_pln, n_max, trt_ref, trt_test,
                  gamma = 0.975, th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
                  method = "mcmc", num_chains = 4,
                  n.iter = 5000, n.adapt = 500, perc_burnin = 0.2) {
 
   n_int <- nrow(dat_int)
 
-  # Evaluate PPoS at current sample size
-  dat_eval <- dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, trt_active))
+  dat_xtr <- sim_rct_normal(n = n_pln - n_int,
+                            mean = rep(NA, 2),
+                            sd = rep(NA, 2),
+                            trtnames = c(trt_ref, trt_test))
+
+  # Evaluate PPoS at the planned sample size
+  dat_eval <- rbind(dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, trt_test)), dat_xtr)
   dat_eval$Treatment <- droplevels(dat_eval$Treatment)
 
   result_pln <- eval_superiority(dat_eval, margin = 0, gamma = gamma,
@@ -257,24 +263,22 @@ ssre <- function(dat_int, n_pln, trt_ref, trt_active,
   ppos_fin <- ppos_int
   benefit <- result_pln %>% pull("est")
 
-  # Assess futility
-  fut.trig <- ifelse(ppos_int < th.fut, TRUE, FALSE)
+  if (ppos_int < th.fut) {
+    fut.trig <- TRUE # Futility triggered
+    inc.ss <- FALSE
+    n.final <- n_pln
+  } else if (ppos_int >= th.prom & ppos_int < th.eff) {
+    fut.trig <- FALSE
+    inc.ss <- TRUE # Sample size increase triggered
+    n.final <- n_pln
 
-  # Assess need for sample size increase
-  inc.ss <- ifelse(ppos_int < th.fut | (ppos_int >= th.prom & ppos_int < th.eff), TRUE, FALSE)
-
-  # Define final sample size
-  n.final <- n_int
-
-  if (ppos_int >= th.prom & ppos_int < th.eff) {
-
-    for (n_pln_new in (n_int + 1):n_pln) {
+    for (n_pln_new in (n_pln + 1):n_max) {
       dat_xtr <- sim_rct_normal(n = n_pln_new - n_int,
                                 mean = rep(NA, 2),
                                 sd = rep(NA, 2),
-                                trtnames = c(trt_ref, trt_active))
+                                trtnames = c(trt_ref, trt_test))
 
-        dat_pln <- rbind(dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, trt_active)), dat_xtr)
+        dat_pln <- rbind(dat_int %>% dplyr::filter(.data$Treatment %in% c(trt_ref, trt_test)), dat_xtr)
         dat_pln$Treatment <- droplevels(dat_pln$Treatment)
 
         result_pln <- eval_superiority(dat_pln, margin = 0, gamma = gamma,
@@ -290,6 +294,10 @@ ssre <- function(dat_int, n_pln, trt_ref, trt_active,
           break;
         }
       }
+  } else {
+    fut.trig <- FALSE
+    inc.ss <- FALSE
+    n.final <- n_pln
   }
 
   return(list(fut.trig = fut.trig,
@@ -297,5 +305,5 @@ ssre <- function(dat_int, n_pln, trt_ref, trt_active,
               PPoS = c("Interim" = ppos_int, "Final" = ppos_fin),
               N = c("Interim" = n_int, "Final" = n.final),
               benefit = benefit,
-              sel.dose = trt_active))
+              sel.dose = trt_test))
 }

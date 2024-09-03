@@ -32,9 +32,33 @@ plotSelDose <- function(...) {
 #'
 #' @details This is a generic function.
 #'
-#' @export plotSelDose
+#' @export plotInterimDecisions
 plotInterimDecisions <- function(...) {
   UseMethod("plotInterimDecisions")
+}
+
+#' Plot Sample Size Re-Estimation Results
+#'
+#' This function plots the sample size re-estimation results from a simulation study. Each point on the plot
+#' represents a simulation, with the x-axis showing the estimated benefit, the y-axis showing the predictive power,
+#' and the color indicating the magnitude of the sample size increase.
+#'
+#' @param \dots Additional arguments, which are currently ignored.
+#' @return A ggplot2 object representing the plot of sample size re-estimation results.
+#'
+#' @details
+#' The function extracts the estimated benefit and predictive power for the selected dose in each simulation and then
+#' plots these against each other. The points are colored according to the magnitude of the sample size increase (`ss_inc`).
+#' The color gradient legend is positioned at the top of the plot.
+#'
+#' @author Thomas Debray
+#'
+#' @import ggplot2
+#' @importFrom rlang .data
+#'
+#' @export plotSampleSizeReEstimation
+plotSampleSizeReEstimation <- function(...) {
+  UseMethod("plotSampleSizeReEstimation")
 }
 
 #' Plot the final sample size
@@ -169,9 +193,12 @@ plotSelDose.bcts <- function(x, ...) {
 #' @param color_scheme A character string specifying the coloring scheme to be used. Options are "dose_selection" and "trial_decision".
 #'                     The "dose_selection" scheme colors points based on dose selection decisions ("Select dose 1", "Select dose 2", "Futility").
 #'                     The "trial_decision" scheme colors points based on trial decisions ("Continue", "Expand", "Futility").
+#' @param interim_index An integer specifying which interim analysis to plot.
+#'                      If `NULL` (default), the first interim analysis is used.
 #' @param ... Optional arguments.
 #' @return A `ggplot2` object showing the scatter plot of estimated effect sizes for the two doses, colored according to the specified decision scheme.
 #'
+#' @method plotInterimDecisions bcts
 #' @export
 #'
 #' @seealso \code{\link{plotInterimDecisions}} for the generic function.
@@ -179,16 +206,20 @@ plotSelDose.bcts <- function(x, ...) {
 #'
 #' @import ggplot2
 #' @importFrom rlang .data
-plotInterimDecisions.bcts <- function(x, color_scheme = "dose_selection", ...) {
+plotInterimDecisions.bcts <- function(x, color_scheme = "dose_selection",
+                                      interim_index = NULL, ...) {
 
-  if (!"interim" %in% names(x)) {
+  if (!"benefit" %in% names(x)) {
     stop("No interim results are available!")
   }
+  if (is.null(interim_index)) {
+    interim_index <- 1
+  }
 
-  dose_1 <- colnames(x$interim$benefit)[1]
-  dose_2 <- colnames(x$interim$benefit)[2]
+  dose_1 <- colnames(x$benefit[[interim_index]])[1]
+  dose_2 <- colnames(x$benefit[[interim_index]])[2]
 
-  ben <- x$interim$benefit
+  ben <- x$benefit[[interim_index]]
   ben$decision <- NA
 
   if (color_scheme == "dose_selection") {
@@ -216,13 +247,72 @@ plotInterimDecisions.bcts <- function(x, color_scheme = "dose_selection", ...) {
   y_label <- paste("Estimated benefit", dose_2)
 
   # Plot the bar chart with percentage labels
-  ggplot(ben, aes(x = ben[,1], y = ben[,2], color = .data$decision)) + geom_point() +
+  ggplot(ben, aes(x = ben[,1], y = ben[,2], color = .data$decision)) +
+    geom_point() +
     geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
     xlab(x_label) +
     ylab(y_label) +
     theme(legend.position = "top") +
     guides(colour = guide_legend(title = NULL)) +
     scale_color_manual(values = color_values)
+}
+
+#' Plot Sample Size Re-Estimation Results
+#'
+#' This function plots the sample size re-estimation results from a simulation study. Each point on the plot
+#' represents a simulation, with the x-axis showing the estimated benefit, the y-axis showing the predictive power,
+#' and the color indicating the magnitude of the sample size increase.
+#'
+#' @param x A list object containing simulation results, including benefit estimates, predictive power, and sample size increases.
+#'          The list must include elements named `benefit`, `PPos`, and `ss_inc`, each of which should be a list containing matrices or data frames.
+#' @param interim_index An integer specifying which interim analysis to use for the plot. If `NULL` (default), the latest interim analysis is used.
+#' @param ... Additional arguments passed to other methods.
+#'
+#' @return A ggplot2 object representing the plot of sample size re-estimation results.
+#'
+#' @details
+#' The function extracts the estimated benefit and predictive power for the selected dose in each simulation and then
+#' plots these against each other. The points are colored according to the magnitude of the sample size increase (`ss_inc`).
+#' The color gradient legend is positioned at the top of the plot.
+#'
+#' @author Thomas Debray
+#'
+#' @import ggplot2
+#' @importFrom rlang .data
+#'
+#' @method plotSampleSizeReEstimation bcts
+#' @export
+plotSampleSizeReEstimation.bcts <- function(x, interim_index = NULL, ...) {
+  if (!"benefit" %in% names(x)) {
+    stop("No interim results are available!")
+  }
+  if (is.null(interim_index)) {
+    interim_index <- length(x$benefit)
+  }
+
+  ben <- x$benefit[[interim_index]]
+  ppos <- x$PPos[[interim_index]]
+
+  # Initialize an empty vector to store the benefit values
+  selected_benefits <- selected_ppos <- numeric(length(x$simresults$sel.dose))
+
+  # Loop through each simulation and extract the corresponding benefit
+  for (i in seq_along(x$simresults$sel.dose)) {
+    selected_dose <- x$simresults$sel.dose[i]  # Get the selected dose for this simulation
+    selected_benefits[i] <- ben[i, selected_dose]  # Extract the corresponding benefit
+    selected_ppos[i] <- ppos[i, "Interim"]
+  }
+
+  ggdat <- data.frame(ben = selected_benefits, ppos = selected_ppos,
+                      ss_inc = x$ss_inc[[interim_index]])
+  ggplot(ggdat, aes(x = .data$ben, y = .data$ppos, color = .data$ss_inc)) +
+    geom_point() +
+    scale_color_gradient(low = "#46125b", high = "#f0e42e") +  # Adjust colors as needed
+    labs(x = "Estimated Benefit", y = "Predictive Power", color = "SS Increase") +
+    theme_minimal() +
+    theme(legend.position = "top",  # Move the legend to the top
+          legend.direction = "horizontal")  # Arrange the legend items horizontally
+
 }
 
 #' Plot Probability of trial success

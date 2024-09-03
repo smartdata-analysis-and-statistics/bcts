@@ -4,7 +4,12 @@
 \alias{plotInterimDecisions.bcts}
 \title{Interim Decision Outcomes: Comparative Effect Sizes by Dose}
 \usage{
-\method{plotInterimDecisions}{bcts}(x, color_scheme = "dose_selection", ...)
+\method{plotInterimDecisions}{bcts}(
+  x,
+  color_scheme = "dose_selection",
+  interim_index = NULL,
+  ...
+)
 }
 \arguments{
 \item{x}{An object of class \code{bcts}. This object should contain the simulation results and interim decisions related to dose selection and futility.}
@@ -12,6 +17,9 @@
 \item{color_scheme}{A character string specifying the coloring scheme to be used. Options are "dose_selection" and "trial_decision".
 The "dose_selection" scheme colors points based on dose selection decisions ("Select dose 1", "Select dose 2", "Futility").
 The "trial_decision" scheme colors points based on trial decisions ("Continue", "Expand", "Futility").}
+
+\item{interim_index}{An integer specifying which interim analysis to plot.
+If \code{NULL} (default), the first interim analysis is used.}
 
 \item{...}{Optional arguments.}
 }

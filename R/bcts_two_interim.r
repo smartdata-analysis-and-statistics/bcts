@@ -1,7 +1,8 @@
 #' Bayesian Clinical Trial Simulation with Two Interim Analyses (BCTS)
 #'
-#' @param n_int First interim sample size (for dose selection)
+#' @param n_int1 First interim sample size (for dose selection)
 #' @param n_int2 Second interim sample size (for sample size re-estimation)
+#' @param n_pln Planned sample size
 #' @param n_max Maximum sample size
 #' @param mu Named vector with expected effect sizes
 #' @param sigma Named vector with expected standard deviations
@@ -38,7 +39,8 @@
 #' @importFrom binom binom.confint
 #' @importFrom rlang .data
 #'
-bcts_two_interim <- function(n_int1, n_int2, n_max, mu, sigma, trt_ref, trt_rank,
+bcts_two_interim <- function(n_int1, n_int2, n_pln, n_max, mu, sigma, trt_ref,
+                             trt_rank,
                  prioritize_low_rank = FALSE, gamma = 0.975,
                  th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
                  method = "mcmc", nsim = 1000, num_chains = 4,
@@ -82,6 +84,10 @@ bcts_two_interim <- function(n_int1, n_int2, n_max, mu, sigma, trt_ref, trt_rank
   int1.PPoS <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = length(trt_active))), trt_active) #interim 1
   int2.PPoS <- setNames(data.frame(matrix(NA, nrow = nsim, ncol = 2)), c("Interim", "Final")) #interim 2
 
+  # Keep track of sample size increase
+  int1.ss_inc <- rep(0, nsim)
+  int2.ss_inc <- rep(0, nsim)
+
   # Keep track of selected dose at first interim analysis
   sel.dose <- rep("", nsim)
 
@@ -98,7 +104,8 @@ bcts_two_interim <- function(n_int1, n_int2, n_max, mu, sigma, trt_ref, trt_rank
                               mean = mu,
                               sd = sigma,
                               trtnames = trt_names)
-    ri <- dose_selection(dat_int = dat_int1, n_pln = n_int2,
+    ri <- dose_selection(dat_int = dat_int1,
+                         n_pln = n_pln,
                          trt_ref = trt_ref,
                          trt_active = trt_active, trt_rank = trt_rank,
                          prioritize_low_rank = prioritize_low_rank,
@@ -119,19 +126,23 @@ bcts_two_interim <- function(n_int1, n_int2, n_max, mu, sigma, trt_ref, trt_rank
 
     dat_int2 <- rbind(dat_int1, dat_xtr)
 
-    ri_ssre <- ssre(dat_int = dat_int2, n_pln = n_max,
+    ri_ssre <- ssre(dat_int = dat_int2,
+                    n_pln = n_pln,
+                    n_max = n_max,
                     trt_ref = trt_ref,
-                    trt_active = sel.dose[i], gamma = gamma, th.fut = th.fut, th.eff = th.eff,
+                    trt_test = sel.dose[i],
+                    gamma = gamma, th.fut = th.fut, th.eff = th.eff,
                          th.prom = th.prom,
                          method = method, num_chains = num_chains,
                          n.iter = n.iter, n.adapt = n.adapt, perc_burnin = perc_burnin)
 
     fut.trig[i,2] <- ri_ssre$fut.trig # Futility triggering at interim 2
-    int2.ben[i,] <- ri_ssre$benefit # Efficacy at interim 2
+    int2.ben[i,sel.dose[i]] <- ri_ssre$benefit # Efficacy at interim 2 for the selected dose
     int2.PPoS[i, ] <- ri_ssre$PPoS # PPoS at interim 2
 
     # Efficacy analysis in the final dataset
-    if (ri_ssre$N["Final"] > nrow(dat_int2)) {
+    if (ri_ssre$inc.ss) {
+      int2.ss_inc[i] <- ri_ssre$N["Final"] - n_pln
       dat_xtr <- sim_rct_normal(n = ri_ssre$N["Final"] - nrow(dat_int2),
                                 mean = mu[c(trt_ref, sel.dose[i])],
                                 sd = sigma[c(trt_ref, sel.dose[i])],
@@ -149,6 +160,8 @@ bcts_two_interim <- function(n_int1, n_int2, n_max, mu, sigma, trt_ref, trt_rank
                                    num_chains = num_chains, n.adapt = n.adapt,
                                    n.iter = n.iter, perc_burnin = perc_burnin)
 
+    simresults$sel.dose[i] <- sel.dose[i]
+    simresults$n.final[i] <- ri_ssre$N["Final"]
     simresults$fut.trig[i] <- any(fut.trig[i,]) # Was futility triggered in any interim?
     simresults$inc.ss[i] <- ri_ssre$inc.ss
     simresults$est.final[i] <- result_fin$est
@@ -179,7 +192,9 @@ bcts_two_interim <- function(n_int1, n_int2, n_max, mu, sigma, trt_ref, trt_rank
               method = method,
               fut.trig = fut.trig,
               sel.dose = sel.dose,
-              PPos = c("Int1" = int1.PPoS, "Int2" = int2.PPoS),
+              PPos = list("Int1" = int1.PPoS, "Int2" = int2.PPoS),
+              benefit = list("Int1" = int1.ben, "Int2" = int2.ben),
+              ss_inc = list("Int1" = int1.ss_inc, "Int2" = int2.ss_inc),
               simresults = simresults
   )
 
