@@ -30,8 +30,9 @@ test_that("Test sample size re-estimation at interim", {
                               trtnames = trt_names)
 
     resultf[i,] <- ssre(dat_int = dat_int,
-                              n_pln = 80*2,
-                              trt_ref = trt_ref, trt_active = trt_active,
+                        n_pln = 80*2,
+                        trt_ref = trt_ref,
+                        trt_test = trt_active,
                               gamma = 1 - alpha/2,
                               th.fut = th.fut, th.eff = th.eff,
                               method = "mcmc")$result

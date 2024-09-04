@@ -10,8 +10,7 @@ dose_selection_and_ssre(
   n_max,
   trt_ref,
   trt_active,
-  trt_rank,
-  prioritize_low_rank = TRUE,
+  trt_rank = NULL,
   gamma = 0.975,
   th.fut = 0.2,
   th.eff = 0.9,
@@ -34,10 +33,7 @@ dose_selection_and_ssre(
 
 \item{trt_active}{Character vector denoting the active treatment names}
 
-\item{trt_rank}{Named vector with preference ranking for each treatment (e.g., lower doses are preferred)}
-
-\item{prioritize_low_rank}{If multiple treatments have a posterior predictive power > 'th.eff', the treatment with lowest rank
-will be selected at interim}
+\item{trt_rank}{Named vector with preference ranking for each treatment (e.g., lower doses are preferred) multiple treatments have a posterior predictive power > 'th.eff'}
 
 \item{gamma}{Level to declare success. For a fixed design, gamma is typically chosen as 0.975 for a one-sided type-I error rate of 2.5\%. However, an increase is usually needed because of dose selection.}
 

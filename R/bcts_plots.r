@@ -247,14 +247,18 @@ plotInterimDecisions.bcts <- function(x, color_scheme = "dose_selection",
   y_label <- paste("Estimated benefit", dose_2)
 
   # Plot the bar chart with percentage labels
-  ggplot(ben, aes(x = ben[,1], y = ben[,2], color = .data$decision)) +
-    geom_point() +
+  ggplot(ben, aes(x = ben[,1], y = ben[,2])) +
+    geom_point(aes(color = .data$decision), size = 1, alpha = 0.5, show.legend = FALSE) +
+    stat_density_2d(aes(fill = after_stat(.data$level)), geom = "polygon", alpha = 0.4) +
     geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+    scale_fill_viridis_c(option = "plasma") +  # Color scale for density
     xlab(x_label) +
     ylab(y_label) +
-    theme(legend.position = "top") +
-    guides(colour = guide_legend(title = NULL)) +
-    scale_color_manual(values = color_values)
+    theme_minimal() +
+    theme(legend.position = "right") +  # Move legend to the right
+    guides(fill = guide_colorbar(title = "Density Level"), color = "none")  +# No color legend for decision, only for density level
+    scale_color_manual(values = color_values) +
+    facet_wrap(~.data$decision)
 }
 
 #' Plot Sample Size Re-Estimation Results
@@ -306,8 +310,8 @@ plotSampleSizeReEstimation.bcts <- function(x, interim_index = NULL, ...) {
   ggdat <- data.frame(ben = selected_benefits, ppos = selected_ppos,
                       ss_inc = x$ss_inc[[interim_index]])
   ggplot(ggdat, aes(x = .data$ben, y = .data$ppos, color = .data$ss_inc)) +
-    geom_point() +
-    scale_color_gradient(low = "#46125b", high = "#f0e42e") +  # Adjust colors as needed
+    geom_point(size = 2, alpha = 0.5) +
+    scale_color_gradientn(colors = c("#46125b", "#2b9689", "#f0e42e")) +  # Adjust colors as needed
     labs(x = "Estimated Benefit", y = "Predictive Power", color = "SS Increase") +
     theme_minimal() +
     theme(legend.position = "top",  # Move the legend to the top

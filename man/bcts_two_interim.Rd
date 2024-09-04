@@ -12,8 +12,7 @@ bcts_two_interim(
   mu,
   sigma,
   trt_ref,
-  trt_rank,
-  prioritize_low_rank = FALSE,
+  trt_rank = NULL,
   gamma = 0.975,
   th.fut = 0.2,
   th.eff = 0.9,
@@ -42,10 +41,7 @@ bcts_two_interim(
 
 \item{trt_ref}{Character denoting the control treatment}
 
-\item{trt_rank}{Named vector with preference ranking for each treatment (e.g., lower doses are preferred)}
-
-\item{prioritize_low_rank}{If multiple treatments have a posterior predictive power > 'th.eff', the treatment with lowest rank
-will be selected at interim}
+\item{trt_rank}{Named vector with preference ranking for each treatment (e.g., lower doses are preferred) when multiple treatments have a posterior predictive power > 'th.eff'}
 
 \item{gamma}{Level to declare success. For a fixed design, gamma is typically chosen as 0.975 for a one-sided type-I error rate of 2.5\%. However, an increase is usually needed because of dose selection.}
 
