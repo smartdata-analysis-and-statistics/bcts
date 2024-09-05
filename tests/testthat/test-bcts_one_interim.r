@@ -15,7 +15,7 @@ test_that("Test RCT with one interim analysis", {
 
   ppos_int <- sim$PPos$Int1$Interim
 
-  ind_ss_inc <- which(ppos_int >= 0.5 & ppos_int < 0.9)4
+  ind_ss_inc <- which(ppos_int >= 0.5 & ppos_int < 0.9)
   ind_no_ss_inc <- which(ppos_int < 0.5 | ppos_int >= 0.9)
 
   expect_false(any(sim$ss_inc$Int1[ind_ss_inc] == 0))

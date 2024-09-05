@@ -1,13 +1,13 @@
-#' Plot Probability of trial success
+#' Plot of PPoS at Interim by Futility and Trial Outcome
 #'
 #' @param \dots Additional arguments, which are currently ignored.
 #' @return A \code{ggplot2} object.
 #'
 #' @details This is a generic function.
 #'
-#' @export plotPPoS
-plotPPoS <- function(...) {
-  UseMethod("plotPPoS")
+#' @export plotInterimPPoS
+plotInterimPPoS <- function(...) {
+  UseMethod("plotInterimPPoS")
 }
 
 #' Plot selected dose
@@ -319,36 +319,51 @@ plotSampleSizeReEstimation.bcts <- function(x, interim_index = NULL, ...) {
 
 }
 
-#' Plot Probability of trial success
+#' Plot of PPoS at Interim by Futility and Trial Outcome
 #'
 #' @param x An object of class bcts
+#' @param interim_index An integer specifying which interim analysis to use for the plot. If `NULL` (default), the latest interim analysis is used.
 #' @param \dots Additional arguments, which are currently ignored.
 #' @return A \code{ggplot2} object.
 #'
 #' @details This is a generic function.
 #'
-#' @method plotPPoS bcts
+#' @method plotInterimPPoS bcts
 #' @export
 #'
 #' @import ggplot2
 #' @importFrom rlang .data
-plotPPoS.bcts <- function(x, ...) {
+plotInterimPPoS.bcts <- function(x, interim_index = NULL, ...) {
 
-  pr.ss.increase <- round(mean(x$simresults$inc.ss)*100,0)
-  inc.ss.labs <- c(paste0("Planned sample size increased (", pr.ss.increase, "%)"),
-                   paste0("Planned sample size retained (", 100 - pr.ss.increase, "%)"))
-  names(inc.ss.labs) <- c("TRUE", "FALSE")
+  if (is.null(interim_index)) {
+    interim_index <- length(x$ss_inc)
+  }
 
-  ggplot(x$simresults, aes(x = .data$sel.dose.ppos, fill = .data$rejectH0.final)) +
-    geom_histogram(binwidth = 0.025, boundary = 0) +
-    scale_fill_manual(values = c("FALSE" = "#B8B8B8", "TRUE" = "#1A80BB"),
-                      labels = c("FALSE" = "Trial failure", "TRUE" = "Trial success")) +
-    xlab("PPoS at final sample size") +
-    labs(fill = "Trial success") +
-    theme(legend.position = "bottom") +
+  inc.ss <- x$ss_inc[[interim_index]] > 0
+  ppos <- x$PPos[[interim_index]] %>% pull("Interim")
+  rejectH0 <- x$simresults$rejectH0.final
+  fut.trig <- x$simresults$fut.trig
+
+  ggdat <- data.frame(ppos = ppos, inc.ss = inc.ss,
+                      fut.trig = fut.trig,
+                      rejectH0 = rejectH0, decision = NA)
+  ggdat$decision[which(ggdat$rejectH0)] <- "Trial Success"
+  ggdat$decision[which(!ggdat$rejectH0)] <- "Trial Failure"
+  ggdat$decision[which(ggdat$fut.trig)] <- "Futility"
+
+  ggplot(ggdat, aes(x = .data$ppos, fill = .data$rejectH0)) +
+    geom_histogram(binwidth = 0.02, boundary = 0, alpha = 0.85) +
+    scale_fill_manual(values = c("TRUE" = "#66c2a5",  # Green for trial success
+                                 "FALSE" = "#fc8d62"),  # Red for trial failure
+                      labels = c("TRUE" = "Trial Success", "FALSE" = "Trial Failure")) +  # Updated labels
+    xlab("Posterior Probability of Success (PPoS) for planned sample size") +
+    labs(fill = "Trial Outcome") +
+    ggtitle(paste("Distribution of PPoS at Interim", interim_index),
+            subtitle = paste("Futility Analysis Across All Interim Looks")) +  # Added subtitle
     ylab("Number of simulations") +
-    theme(legend.position = "bottom", legend.title = element_blank()) +
-    facet_grid(~ inc.ss, labeller = labeller(inc.ss = inc.ss.labs), scales = "free_x")
+    theme(legend.position = "top", legend.title = element_blank()) +
+    facet_wrap(~ .data$fut.trig, labeller = labeller(fut.trig = c(`TRUE` = "Futility Triggered",
+                                                              `FALSE` = "Futility not Triggered")))
 }
 
 #' Plot final sample size

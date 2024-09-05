@@ -1,3 +1,7 @@
+search_gamma <- function() {
+
+}
+
 #' Estimate the Power for the Difference between Two Means
 #' @param n1 Number of observations in treatment group 1
 #' @param n2 Number of observations in treatment group 2
