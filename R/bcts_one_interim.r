@@ -32,6 +32,7 @@
 #' @importFrom utils txtProgressBar setTxtProgressBar
 #' @importFrom binom binom.confint
 #' @importFrom rlang .data
+#' @importFrom stats setNames
 #'
 bcts_one_interim <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank = NULL,
                              gamma = 0.975,

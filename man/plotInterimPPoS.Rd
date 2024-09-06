@@ -2,7 +2,7 @@
 % Please edit documentation in R/bcts_plots.r
 \name{plotInterimPPoS}
 \alias{plotInterimPPoS}
-\title{Plot of PPoS at Interim by Sample Size Decision and Trial Outcome}
+\title{Plot of PPoS at Interim by Futility and Trial Outcome}
 \usage{
 plotInterimPPoS(...)
 }
@@ -13,7 +13,7 @@ plotInterimPPoS(...)
 A \code{ggplot2} object.
 }
 \description{
-Plot of PPoS at Interim by Sample Size Decision and Trial Outcome
+Plot of PPoS at Interim by Futility and Trial Outcome
 }
 \details{
 This is a generic function.

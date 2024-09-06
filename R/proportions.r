@@ -77,7 +77,7 @@ N_two_sample_proportions <- function(p_treat = NA,
 #' @param alpha Alpha
 #' @param nsim Number of simulations to conduct
 #'
-#' @import stats
+#' @importFrom stats rbinom qnorm
 #'
 #' @return List with result
 #' @export
@@ -104,7 +104,7 @@ power_fisher <- function(n_control,
     var_p_t <- obs_p_t*(1 - obs_p_t)/length(y_t)
     var_p_c <- obs_p_c*(1 - obs_p_c)/length(y_c)
 
-    # Derive the z-score
+    # Derive the test statistic
     z_t <- (obs_p_t - obs_p_c - delta)/sqrt(var_p_t + var_p_c)
 
     # The p-value is determined as the probability of observing data as

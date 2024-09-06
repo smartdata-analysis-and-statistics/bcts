@@ -38,7 +38,7 @@ test_that("Test sample size re-estimation at interim", {
                               method = "mcmc")$result
   }
 
-  expect_false(any(resultf %>% filter(fut.trig) %>% pull(ppos_fin) > th.fut),
+  expect_false(any(resultf %>% dplyr::filter(fut.trig) %>% pull(ppos_fin) > th.fut),
               info = "PPoS should be below th.fut when futility is triggered")
 
 

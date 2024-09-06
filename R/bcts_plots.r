@@ -332,6 +332,7 @@ plotSampleSizeReEstimation.bcts <- function(x, interim_index = NULL, ...) {
 #' @export
 #'
 #' @import ggplot2
+#' @importFrom dplyr n
 #' @importFrom rlang .data
 plotInterimPPoS.bcts <- function(x, interim_index = NULL, ...) {
 
@@ -351,6 +352,16 @@ plotInterimPPoS.bcts <- function(x, interim_index = NULL, ...) {
   ggdat$decision[which(!ggdat$rejectH0)] <- "Trial Failure"
   ggdat$decision[which(ggdat$fut.trig)] <- "Futility"
 
+  facet_labels <- ggdat %>%
+    dplyr::group_by(fut.trig) %>%
+    dplyr::summarise(n = n()) %>%
+    dplyr::summarise(n = n()) %>%
+    mutate(prop = .data$n / sum(.data$n),  # Calculate proportion
+           label = ifelse(fut.trig == TRUE,
+                          paste0("Futility Triggered (", round(.data$prop * 100, 1), "%)"),
+                          paste0("Futility not Triggered (", round(.data$prop * 100, 1), "%)"))) %>%
+    pull("label", "fut.trig")
+
   ggplot(ggdat, aes(x = .data$ppos, fill = .data$rejectH0)) +
     geom_histogram(binwidth = 0.02, boundary = 0, alpha = 0.85) +
     scale_fill_manual(values = c("TRUE" = "#66c2a5",  # Green for trial success
@@ -362,8 +373,8 @@ plotInterimPPoS.bcts <- function(x, interim_index = NULL, ...) {
             subtitle = paste("Futility Analysis Across All Interim Looks")) +  # Added subtitle
     ylab("Number of simulations") +
     theme(legend.position = "top", legend.title = element_blank()) +
-    facet_wrap(~ .data$fut.trig, labeller = labeller(fut.trig = c(`TRUE` = "Futility Triggered",
-                                                              `FALSE` = "Futility not Triggered")))
+    facet_wrap(~ .data$fut.trig,
+               labeller = labeller(fut.trig = facet_labels))  # Updated facet labels with data point count
 }
 
 #' Plot final sample size

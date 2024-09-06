@@ -17,7 +17,7 @@ search_gamma <- function() {
 #' @description
 #' For superiority, H0 is defined as mu1 - mu2 <= margin.
 #'
-#' @importFrom stats pnorm
+#' @importFrom stats pnorm qnorm
 #'
 #' @return An object of class "fpower"
 #'
@@ -241,9 +241,9 @@ eval_superiority <- function(data,
 #' @param n.iter The number of iterations to monitor
 #' @param perc_burnin The percentage of iterations to keep for burn-in
 #'
-#' @import stats
 #' @import rjags
 #' @importFrom rlang .data
+#' @importFrom stats quantile sd qnorm var update
 #'
 #' @return A data frame with results from the evaluation
 #'
@@ -314,6 +314,7 @@ eval_superiority_bayes <- function(data, margin, gamma, trt_ref = "Placebo", num
 #' @return A data frame with the results from the evaluation
 #'
 #' @importFrom rlang .data
+#' @importFrom stats quantile sd qnorm var
 eval_superiority_mcmc <- function(data, margin = 0, gamma = 0.975, trt_ref = "Placebo") {
 
   trt_act <-  setdiff(data$Treatment, trt_ref)

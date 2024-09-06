@@ -22,6 +22,7 @@
 #'
 #' @importFrom dplyr %>%
 #' @importFrom rlang .data
+#' @importFrom stats setNames
 dose_selection_and_ssre <- function(dat_int, n_pln, n_max, trt_ref, trt_active,
                                     trt_rank = NULL,
                                     gamma = 0.975,

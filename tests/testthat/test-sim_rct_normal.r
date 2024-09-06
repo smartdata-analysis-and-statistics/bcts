@@ -14,8 +14,8 @@ test_that("Test type-I error control", {
                          trtnames = c("control", "treat"))
 
     # Evaluate significance using frequentist method
-    Yc <- ds %>% filter(Treatment == "control") %>% pull(Y)
-    Yt <- ds %>% filter(Treatment == "treat") %>% pull(Y)
+    Yc <- ds %>% dplyr::filter(Treatment == "control") %>% pull(Y)
+    Yt <- ds %>% dplyr::filter(Treatment == "treat") %>% pull(Y)
     sepooled <- sqrt(var(Yc)/length(Yc) + var(Yt)/length(Yt))
     z_freq <- (mean(Yt) - mean(Yc))/sepooled
     sig[i] <- z_freq > z_crit
