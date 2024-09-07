@@ -243,6 +243,17 @@ plotInterimDecisions.bcts <- function(x, color_scheme = "dose_selection",
     stop("Invalid color_scheme. Choose 'dose_selection' or 'trial_decision'.")
   }
 
+  # Update decision labels with proportions in brackets
+  facet_labels <- ben %>%
+    dplyr::group_by(.data$decision) %>%
+    dplyr::summarise(n = n()) %>%
+    dplyr::mutate(prop = .data$n / sum(.data$n),
+                  label = paste0(.data$decision, " (", round(.data$prop * 100, 1), "%)"))
+
+  # Convert the labels to a named vector for facet labeling
+  facet_labels_vec <- setNames(facet_labels$label, facet_labels$decision)
+
+
   x_label <- paste("Estimated benefit", dose_1)
   y_label <- paste("Estimated benefit", dose_2)
 
@@ -258,7 +269,7 @@ plotInterimDecisions.bcts <- function(x, color_scheme = "dose_selection",
     theme(legend.position = "right") +  # Move legend to the right
     guides(fill = guide_colorbar(title = "Density Level"), color = "none")  +# No color legend for decision, only for density level
     scale_color_manual(values = color_values) +
-    facet_wrap(~.data$decision)
+    facet_wrap(~.data$decision, labeller = as_labeller(facet_labels_vec))
 }
 
 #' Plot Sample Size Re-Estimation Results
@@ -352,15 +363,18 @@ plotInterimPPoS.bcts <- function(x, interim_index = NULL, ...) {
   ggdat$decision[which(!ggdat$rejectH0)] <- "Trial Failure"
   ggdat$decision[which(ggdat$fut.trig)] <- "Futility"
 
+  # Summarize to get the count and proportions for each group
   facet_labels <- ggdat %>%
     dplyr::group_by(fut.trig) %>%
     dplyr::summarise(n = n()) %>%
-    dplyr::summarise(n = n()) %>%
-    mutate(prop = .data$n / sum(.data$n),  # Calculate proportion
-           label = ifelse(fut.trig == TRUE,
-                          paste0("Futility Triggered (", round(.data$prop * 100, 1), "%)"),
-                          paste0("Futility not Triggered (", round(.data$prop * 100, 1), "%)"))) %>%
-    pull("label", "fut.trig")
+    dplyr::mutate(prop = .data$n / sum(.data$n),  # Calculate proportion
+                  label = dplyr::case_when(
+                    fut.trig == TRUE ~ paste0("Futility (", round(.data$prop * 100, 1), "%)"),
+                    fut.trig == FALSE ~ paste0("Continue/Expand (", round(.data$prop * 100, 1), "%)")
+                  ))
+
+  # Convert the labels to a named vector for the facet labeller
+  facet_labels_vec <- setNames(facet_labels$label, facet_labels$fut.trig)
 
   ggplot(ggdat, aes(x = .data$ppos, fill = .data$rejectH0)) +
     geom_histogram(binwidth = 0.02, boundary = 0, alpha = 0.85) +
@@ -373,8 +387,8 @@ plotInterimPPoS.bcts <- function(x, interim_index = NULL, ...) {
             subtitle = paste("Futility Analysis Across All Interim Looks")) +  # Added subtitle
     ylab("Number of simulations") +
     theme(legend.position = "top", legend.title = element_blank()) +
-    facet_wrap(~ .data$fut.trig,
-               labeller = labeller(fut.trig = facet_labels))  # Updated facet labels with data point count
+    facet_wrap(~ fut.trig, labeller = as_labeller(facet_labels_vec)) +
+    theme_minimal()
 }
 
 #' Plot final sample size
