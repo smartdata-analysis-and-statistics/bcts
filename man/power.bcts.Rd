@@ -2,15 +2,19 @@
 % Please edit documentation in R/bcts.r
 \name{power.bcts}
 \alias{power.bcts}
-\title{Extract the power of a bcts simulation}
+\title{Extract the power of a bcts simulation, with optional adjustment for non-binding futility}
 \usage{
-\method{power}{bcts}(x, ...)
+\method{power}{bcts}(x, adjust_for_futility = FALSE, conf.level = 0.95, ...)
 }
 \arguments{
 \item{x}{An object of class bcts}
 
+\item{adjust_for_futility}{Logical, whether to adjust the power for simulations where non-binding futility was triggered. Default is FALSE.}
+
+\item{conf.level}{Numeric, the confidence level for the power calculation. Default is 0.95.}
+
 \item{...}{Optional arguments}
 }
 \description{
-Extract the power of a bcts simulation
+Extract the power of a bcts simulation, with optional adjustment for non-binding futility
 }

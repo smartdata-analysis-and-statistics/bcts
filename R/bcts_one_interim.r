@@ -34,12 +34,13 @@
 #' @importFrom rlang .data
 #' @importFrom stats setNames
 #'
-bcts_one_interim <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank = NULL,
+bcts_one_interim <- function(n_int, n_pln, n_max, mu, sigma, trt_ref,
+                             trt_rank = NULL,
                              gamma = 0.975,
-                 th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
-                 method = "mcmc", nsim = 1000, num_chains = 4,
-                 n.iter = 5000, n.adapt = 500, perc_burnin = 0.2,
-                 progress.bar = "text") {
+                             th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
+                             method = "mcmc", nsim = 1000, num_chains = 4,
+                             n.iter = 5000, n.adapt = 500, perc_burnin = 0.2,
+                             progress.bar = "text") {
 
   # Sample the random seeds
   seeds <- seq(nsim)
@@ -153,6 +154,7 @@ bcts_one_interim <- function(n_int, n_pln, n_max, mu, sigma, trt_ref, trt_rank =
   out <- list(no.looks = 1,
               trt_ref = trt_ref,
               trt_active = trt_active,
+              trt_rank = trt_rank,
               mu = mu,
               sigma = sigma,
               th.fut = th.fut,

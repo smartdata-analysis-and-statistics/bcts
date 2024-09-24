@@ -119,9 +119,8 @@ print.bcts <- function(x, ...) {
   n_fin_qt <- stats::quantile(x$simresults$n.final, c((1 - conf.level)/2, 1 - (1 - conf.level)/2))
 
 
-  power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final),
-                               n = nrow(x$simresults),
-                               level = conf.level)
+  power_without_fut <- power(x = x, adjust_for_futility = FALSE, level = conf.level)
+  power_with_fut <- power(x = x, adjust_for_futility = TRUE, level = conf.level)
 
   fut.trig <- mc_error_proportion(x = sum(x$simresults$fut.trig),
                                   n = nrow(x$simresults),
@@ -135,10 +134,14 @@ print.bcts <- function(x, ...) {
                       est = numeric(),
                       cil = numeric(),
                       ciu = numeric())
-  out <- out %>% add_row(data.frame(statistic = "Power",
-                                      est = power$est,
-                                      cil = power$lower,
-                                      ciu = power$upper))
+  out <- out %>% add_row(data.frame(statistic = "Power (Without Futility Adjustment)",
+                                      est = power_without_fut$est,
+                                      cil = power_without_fut$lower,
+                                      ciu = power_without_fut$upper))
+  out <- out %>% add_row(data.frame(statistic = "Power (With Futility Adjustment)",
+                                    est = power_with_fut$est,
+                                    cil = power_with_fut$lower,
+                                    ciu = power_with_fut$upper))
     out <- out %>% add_row(data.frame(statistic = "Pr(fut.trig)",
                                       est = fut.trig$est,
                                       cil = fut.trig$lower,
@@ -159,21 +162,34 @@ print.bcts <- function(x, ...) {
 
 
 
-#' Extract the power of a bcts simulation
+#' Extract the power of a bcts simulation, with optional adjustment for non-binding futility
 #'
 #' @param x An object of class bcts
+#' @param adjust_for_futility Logical, whether to adjust the power for simulations where non-binding futility was triggered. Default is FALSE.
+#' @param conf.level Numeric, the confidence level for the power calculation. Default is 0.95.
 #' @param ... Optional arguments
 #'
 #' @method power bcts
 #' @export
 #'
 #' @importFrom rlang .data
-power.bcts <- function(x, ...) {
-  conf.level <- 0.95
+power.bcts <- function(x, adjust_for_futility = FALSE, conf.level = 0.95, ...) {
 
-  power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final),
-                               n = nrow(x$simresults),
-                               level = conf.level)
+  if (adjust_for_futility) {
+    # Calculate power based on the valid simulations (excluding those with futility-triggering without rejection)
+
+    valid_rows <- which(!x$simresults$fut.trig)
+
+    power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final[valid_rows]),
+                                 n = nrow(x$simresults),
+                                 level = conf.level)
+  } else {
+    # Regular power calculation based on rejection of H0 without adjusting for futility
+    power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final),
+                                 n = nrow(x$simresults),
+                                 level = conf.level)
+  }
+
   return(power)
 }
 
@@ -396,5 +412,37 @@ prepare_jags_ppos <- function(dat, gamma, margin = 0, trt_ref = "Placebo") {
               variable.names = variable.names))
   }
 
+#' Filter a list of bcts objects based on design criteria
+#'
+#' This function takes a list of bcts objects and filters them based on user-specified design criteria.
+#' The function returns a list of bcts objects that meet the given criteria.
+#'
+#' @param bcts_list A list of objects of class bcts to be filtered.
+#' @param no.looks An optional filter for the number of looks. Only bcts objects with this number of looks will be retained.
+#' @param futility_threshold An optional filter for the futility threshold (e.g., 0.15, 0.20). Only bcts objects with this threshold will be retained.
+#' @param gamma_values An optional filter for gamma values. Only bcts objects with the specified gamma values will be retained.
+#' @param ... Additional criteria for filtering the bcts objects.
+#'
+#' @return A filtered list of bcts objects that meet the design criteria.
+#'
+#' @export
+filter_bcts_by_design <- function(bcts_list, no.looks = NULL, futility_threshold = NULL, gamma_values = NULL, ...) {
+  # Filter by number of looks
+  if (!is.null(no.looks)) {
+    bcts_list <- Filter(function(x) x$no.looks == no.looks, bcts_list)
+  }
+
+  # Filter by futility threshold
+  if (!is.null(futility_threshold)) {
+    bcts_list <- Filter(function(x) x$th.fut == futility_threshold, bcts_list)
+  }
+
+  # Filter by gamma values
+  if (!is.null(gamma_values)) {
+    bcts_list <- Filter(function(x) x$gamma %in% gamma_values, bcts_list)
+  }
+
+  return(bcts_list)
+}
 
 

@@ -420,3 +420,85 @@ plotFinalSampleSize.bcts <- function(x, ...) {
              hjust = 1, vjust = 1, size = 5, color = "black", fontface = "bold") +
     ylim(0,  nrow(x$simresults))
 }
+
+
+#' Plot the Relationship Between Type-I Error and Power Across Decision Thresholds (Gamma)
+#'
+#' This function creates a scatter plot to visualize the relationship between Type-I error and power
+#' across different decision thresholds (gamma values). The input is two lists of simulation results:
+#' one for power and one for Type-I error. The resulting plot shows how power and Type-I error
+#' vary with respect to gamma, and optionally distinguishes between different design criteria.
+#'
+#' @param sim_list_power A list of simulation results for power, where each element is an object containing power estimates.
+#' @param sim_list_type1 A list of simulation results for Type-I error, where each element is an object containing Type-I error estimates.
+#'
+#' @details
+#' The function expects the lists `sim_list_power` and `sim_list_type1` to be parallel, meaning each corresponding
+#' element in the lists should refer to the same simulation setting (i.e., same gamma, number of looks, etc.).
+#' It extracts the gamma values, power, Type-I error, and optionally other design-related parameters from
+#' these lists and generates a scatter plot. Points in the plot are colored based on the gamma values and
+#' shaped based on the prioritization of certain (e.g., lower) doses.
+#'
+#' @return A ggplot2 object representing the relationship between Type-I error and power across different decision thresholds (gamma).
+#'
+#' @import ggplot2
+#' @importFrom rlang .data
+#'
+#' @export
+plotPowerType1 <- function(sim_list_power, sim_list_type1) {
+
+  # Create a data frame for plotting
+  ggdat <- data.frame(gamma =  numeric(),
+                      type1 = numeric(),
+                      th.fut = numeric(),
+                      th.eff = numeric(),
+                      th.prom = numeric(),
+                      power = numeric(),
+                      no.looks = numeric(),
+                      pld = logical())
+
+  for (sim in sim_list_power) {
+    result <- data.frame(gamma =  sim$gamma,
+                         type1 = NA,
+                         th.fut = sim$th.fut,
+                         th.eff = sim$th.eff,
+                         th.prom = sim$th.prom,
+                         power = power(sim, adjust_for_futility = TRUE)$est,
+                         no.looks = sim$no.looks,
+                         pld = ifelse(is.null(sim$trt_rank), FALSE, TRUE))
+    ggdat <- ggdat %>% add_row(result)
+  }
+
+  for (sim in sim_list_type1) {
+    pld_i <- ifelse(is.null(sim$trt_rank), FALSE, TRUE)
+    row <- which(ggdat$gamma == sim$gamma &
+                   ggdat$th.fut == sim$th.fut &
+                   ggdat$th.eff == sim$th.eff &
+                   ggdat$th.prom == sim$th.prom &
+                   ggdat$no.looks == sim$no.looks &
+                   ggdat$pld == pld_i)
+    ggdat$type1[row] <- power(sim, adjust_for_futility = FALSE)$est
+  }
+  ggdat$th.fut <- as.factor(ggdat$th.fut)
+
+  # Plot Type-I error vs Power with gamma as color
+  ggplot(ggdat, aes(x = .data$type1,
+                    y = .data$power,
+                    color = factor(.data$gamma),
+                    shape = factor(.data$pld))) +
+    geom_point(size = 3, alpha = 0.7) +
+    labs(
+      x = "Type-I Error",
+      y = "Power",
+      color = "Gamma",
+      title = paste("Type-I Error vs Power")
+    ) +
+    #theme_minimal() +
+    theme(legend.position = "right") +
+    scale_color_viridis_d() +
+    scale_shape_manual(values = c(16, 17),  # Different point shapes for pld = TRUE/FALSE
+                       labels = c("Prioritize Most Effective Dose", "Prioritize Low Dose")) +
+    facet_wrap(~ no.looks, labeller = as_labeller(c(`1` = "One Look",
+                                                    `2` = "Two Looks")))
+}
+
