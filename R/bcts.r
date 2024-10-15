@@ -1,6 +1,4 @@
-search_gamma <- function() {
 
-}
 
 #' Estimate the Power for the Difference between Two Means
 #' @param n1 Number of observations in treatment group 1
@@ -419,28 +417,97 @@ prepare_jags_ppos <- function(dat, gamma, margin = 0, trt_ref = "Placebo") {
 #'
 #' @param bcts_list A list of objects of class bcts to be filtered.
 #' @param no.looks An optional filter for the number of looks. Only bcts objects with this number of looks will be retained.
-#' @param futility_threshold An optional filter for the futility threshold (e.g., 0.15, 0.20). Only bcts objects with this threshold will be retained.
-#' @param gamma_values An optional filter for gamma values. Only bcts objects with the specified gamma values will be retained.
+#' @param th.fut An optional filter for the futility threshold, checked using approximate equality. Only bcts objects with this threshold will be retained.
+#' @param th.eff An optional filter for the efficacy threshold, checked using approximate equality. Only bcts objects with this threshold will be retained.
+#' @param gamma_values An optional filter for gamma values, checked using approximate equality. Only bcts objects with the specified gamma values will be retained.
+#' @param trt_rank An optional named vector specifying treatment ranking. Each bcts object with a matching treatment ranking will be retained.
+#' @param power_lower Optional, only retain simulations with power greater than this value (without futility adjustment).
+#' @param power_upper Optional, only retain simulations with power less than this value (without futility adjustment).
+#' @param select_max_power Logical, if TRUE, only the bcts object with the highest power will be returned.
+#' @param tolerance Numeric value for the tolerance when comparing gamma and futility threshold values. Default is 1e-8.
 #' @param ... Additional criteria for filtering the bcts objects.
+#'
+#' @details
+#' Filtering by gamma uses approximate equality, meaning that values for certain arguments (e.g., gamma) will match if they are within a small tolerance.
+#' Filtering by power is based on the power estimates without any adjustment for futility.
+#' If \code{select_max_power} is TRUE, the function will return the bcts object with the highest power
+#' after applying the filters.
 #'
 #' @return A filtered list of bcts objects that meet the design criteria.
 #'
 #' @export
-filter_bcts_by_design <- function(bcts_list, no.looks = NULL, futility_threshold = NULL, gamma_values = NULL, ...) {
+filter_bcts_by_design <- function(bcts_list,
+                                  no.looks = NULL,
+                                  th.fut = NULL,
+                                  th.eff = NULL,
+                                  gamma_values = NULL,
+                                  trt_rank = NULL,
+                                  power_lower = NULL,
+                                  power_upper = NULL,
+                                  select_max_power = FALSE,
+                                  tolerance = 1e-8, ...) {
   # Filter by number of looks
   if (!is.null(no.looks)) {
     bcts_list <- Filter(function(x) x$no.looks == no.looks, bcts_list)
   }
 
-  # Filter by futility threshold
-  if (!is.null(futility_threshold)) {
-    bcts_list <- Filter(function(x) x$th.fut == futility_threshold, bcts_list)
+  # Filter by futility threshold using approximate equality
+  if (!is.null(th.fut)) {
+    bcts_list <- Filter(function(x) {
+      abs(x$th.fut - th.fut) < tolerance
+    }, bcts_list)
   }
 
-  # Filter by gamma values
-  if (!is.null(gamma_values)) {
-    bcts_list <- Filter(function(x) x$gamma %in% gamma_values, bcts_list)
+  # Filter by futility threshold using approximate equality
+  if (!is.null(th.eff)) {
+    bcts_list <- Filter(function(x) {
+      abs(x$th.eff - th.eff) < tolerance
+    }, bcts_list)
   }
+
+  # Filter by gamma values using approximate equality
+  if (!is.null(gamma_values)) {
+    bcts_list <- Filter(function(x) {
+      any(abs(x$gamma - gamma_values) < tolerance)
+    }, bcts_list)
+  }
+
+  # Filter by treatment rank
+  if (!is.null(trt_rank)) {
+    bcts_list <- Filter(function(x) {
+      if (is.null(x$trt_rank)) {
+        return(FALSE)  # Skip if trt_rank is NULL in the object
+      }
+      all(names(trt_rank) %in% names(x$trt_rank) & trt_rank == x$trt_rank)
+    }, bcts_list)
+  }
+
+  # Filter by power (lower and upper bounds)
+  if (!is.null(power_lower)) {
+    bcts_list <- Filter(function(x) {
+      xpow <- power(x, adjust_for_futility = FALSE)
+      return(xpow$est > power_lower)
+      } , bcts_list)
+  }
+
+  if (!is.null(power_upper)) {
+    bcts_list <- Filter(function(x) {
+      xpow <- power(x, adjust_for_futility = FALSE)
+      return(xpow$est < power_upper)
+      }, bcts_list)
+  }
+
+  # Check if the list is empty after filtering
+  if (length(bcts_list) == 0) {
+    return(NULL)  # Return NULL if no objects match the criteria
+  }
+
+  # If select_max_power is TRUE, return the bcts object with the highest power
+  if (select_max_power && length(bcts_list) > 0) {
+    max_power_object <- bcts_list[[which.max(sapply(bcts_list, function(x) power(x, adjust_for_futility = FALSE)$est))]]
+    return(max_power_object)
+  }
+
 
   return(bcts_list)
 }

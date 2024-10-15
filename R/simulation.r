@@ -7,6 +7,8 @@
 #'
 #' @return A dataframe with the simulated trial data
 #'
+#' @author Thomas Debray
+#'
 #' @export
 #' @importFrom stats rnorm
 #' @importFrom dplyr mutate rename slice_head
@@ -55,14 +57,19 @@ sim_rct_normal <- function(n,
   return(dat)
 }
 
-#' Monte Carlo error for a proportion
+#' Monte Carlo Error for Proportion Estimate
 #'
-#' @param x Observed event count
-#' @param n Total number of Monte Carlo Simulations
-#' @param level Confidence level
+#' This function calculates the Monte Carlo error for a proportion estimate based on observed event counts.
 #'
+#' @param x Numeric. The observed event count.
+#' @param n Numeric. The total number of Monte Carlo simulations.
+#' @param level Numeric. The confidence level for the error bounds (default is 0.95).
+#' @return A data frame containing the observed event count, total simulations, proportion estimate, standard error, and confidence interval.
 #' @importFrom rlang .data
-mc_error_proportion <- function(x, n, level) {
+#' @export
+#'
+#' @author Thomas Debray
+mc_error_proportion <- function(x, n, level = 0.95) {
   out <- data.frame(x = x,
                     n = n,
                     est = x/n) %>% dplyr::mutate(

@@ -87,9 +87,11 @@ plotFinalSampleSize  <- function(...) {
 plot.bcts <- function(x, ...) {
   conf.level <- 0.95
 
-  power <- mc_error_proportion(x = sum(x$simresults$rejectH0.final),
-                               n = nrow(x$simresults),
-                               level = conf.level)
+  # Calculate power without futility adjustment
+  power_no_fut <- power(x, adjust_for_futility = FALSE, conf.level = conf.level)
+
+  # Calculate power with futility adjustment
+  power_with_fut <- power(x, adjust_for_futility = TRUE, conf.level = conf.level)
 
   fut.trig <- mc_error_proportion(x = sum(x$simresults$fut.trig),
                                   n = nrow(x$simresults),
@@ -99,20 +101,35 @@ plot.bcts <- function(x, ...) {
                                 n = nrow(x$simresults),
                                 level = conf.level)
 
+  # Initialize an empty data frame
   out <- data.frame(statistic = character(),
+                    adjustment = character(),
                     est = numeric(),
                     cil = numeric(),
                     ciu = numeric())
 
+  # Add power without futility adjustment
   out <- out %>% add_row(data.frame(statistic = "Power",
-                                    est = power$est,
-                                    cil = power$lower,
-                                    ciu = power$upper))
+                                    adjustment = "Without Futility Adjustment",
+                                    est = power_no_fut$est,
+                                    cil = power_no_fut$lower,
+                                    ciu = power_no_fut$upper))
+
+  # Add power with futility adjustment
+  out <- out %>% add_row(data.frame(statistic = "Power",
+                                    adjustment = "With Futility Adjustment",
+                                    est = power_with_fut$est,
+                                    cil = power_with_fut$lower,
+                                    ciu = power_with_fut$upper))
+
+  # Add other probabilities
   out <- out %>% add_row(data.frame(statistic = "Pr(fut.trig)",
+                                    adjustment = "N/A",
                                     est = fut.trig$est,
                                     cil = fut.trig$lower,
                                     ciu = fut.trig$upper))
   out <- out %>% add_row(data.frame(statistic = "Pr(inc.ss)",
+                                    adjustment = "N/A",
                                     est = inc.ss$est,
                                     cil = inc.ss$lower,
                                     ciu = inc.ss$upper))
@@ -122,20 +139,26 @@ plot.bcts <- function(x, ...) {
   out$cil <- out$cil * 100
   out$ciu <- out$ciu * 100
 
-  ggplot(out, aes(x = .data$statistic, y = .data$est)) +
-    #geom_bar(stat = "identity", alpha = 0.7) +
-    geom_point() +
-    geom_errorbar(aes(ymin = .data$cil, ymax = .data$ciu), width = 0.2) +
+  # Set the factor levels for 'adjustment' to control the order of the plot
+  out$adjustment <- factor(out$adjustment,
+                           levels = c("Without Futility Adjustment",
+                                      "With Futility Adjustment",
+                                      "N/A"))
+
+  # Create the plot
+  ggplot(out, aes(x = .data$statistic, y = .data$est, color = .data$adjustment)) +
+    geom_point(position = position_dodge(width = 0.5), size = 3) +
+    geom_errorbar(aes(ymin = .data$cil, ymax = .data$ciu),
+                  width = 0.2, position = position_dodge(width = 0.5)) +
     facet_wrap(~statistic, scales = "free") +
-    labs(x = "Statistic", y = "Estimate (95% CI)") +
-    xlab("") +
+    labs(x = "Statistic", y = "Estimate (95% CI)", color = "Adjustment") +
     scale_y_continuous(labels = scales::percent_format(scale = 1)) +
     theme_minimal() +
     theme(
       axis.title.x = element_blank(),
       axis.text.x = element_blank(),
       axis.ticks.x = element_blank()
-    ) #+ scale_fill_brewer()
+    )
 
 }
 

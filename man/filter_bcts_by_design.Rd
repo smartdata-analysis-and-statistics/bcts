@@ -7,8 +7,14 @@
 filter_bcts_by_design(
   bcts_list,
   no.looks = NULL,
-  futility_threshold = NULL,
+  th.fut = NULL,
+  th.eff = NULL,
   gamma_values = NULL,
+  trt_rank = NULL,
+  power_lower = NULL,
+  power_upper = NULL,
+  select_max_power = FALSE,
+  tolerance = 1e-08,
   ...
 )
 }
@@ -17,9 +23,21 @@ filter_bcts_by_design(
 
 \item{no.looks}{An optional filter for the number of looks. Only bcts objects with this number of looks will be retained.}
 
-\item{futility_threshold}{An optional filter for the futility threshold (e.g., 0.15, 0.20). Only bcts objects with this threshold will be retained.}
+\item{th.fut}{An optional filter for the futility threshold, checked using approximate equality. Only bcts objects with this threshold will be retained.}
 
-\item{gamma_values}{An optional filter for gamma values. Only bcts objects with the specified gamma values will be retained.}
+\item{th.eff}{An optional filter for the efficacy threshold, checked using approximate equality. Only bcts objects with this threshold will be retained.}
+
+\item{gamma_values}{An optional filter for gamma values, checked using approximate equality. Only bcts objects with the specified gamma values will be retained.}
+
+\item{trt_rank}{An optional named vector specifying treatment ranking. Each bcts object with a matching treatment ranking will be retained.}
+
+\item{power_lower}{Optional, only retain simulations with power greater than this value (without futility adjustment).}
+
+\item{power_upper}{Optional, only retain simulations with power less than this value (without futility adjustment).}
+
+\item{select_max_power}{Logical, if TRUE, only the bcts object with the highest power will be returned.}
+
+\item{tolerance}{Numeric value for the tolerance when comparing gamma and futility threshold values. Default is 1e-8.}
 
 \item{...}{Additional criteria for filtering the bcts objects.}
 }
@@ -29,4 +47,10 @@ A filtered list of bcts objects that meet the design criteria.
 \description{
 This function takes a list of bcts objects and filters them based on user-specified design criteria.
 The function returns a list of bcts objects that meet the given criteria.
+}
+\details{
+Filtering by gamma uses approximate equality, meaning that values for certain arguments (e.g., gamma) will match if they are within a small tolerance.
+Filtering by power is based on the power estimates without any adjustment for futility.
+If \code{select_max_power} is TRUE, the function will return the bcts object with the highest power
+after applying the filters.
 }
