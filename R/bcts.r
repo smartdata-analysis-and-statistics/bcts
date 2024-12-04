@@ -1,3 +1,143 @@
+#' Bayesian Clinical Trial Simulation (BCTS)
+#'
+#' @param n_dose_sel First interim sample size (for dose selection)
+#' @param n_ss_reest Optional second interim sample size (for sample size re-estimation)
+#' @param n_pln Planned sample size
+#' @param n_max Maximum sample size
+#' @param mu Named vector with expected effect sizes
+#' @param sigma Named vector with expected standard deviations
+#' @param trt_ref Character denoting the control treatment
+#' @param trt_rank Named vector with preference ranking for each treatment (e.g., lower doses are preferred) when multiple treatments have a posterior predictive power > 'th.eff'
+#' @param alpha Desired one-sided type-I error rate (default: 0.025)
+#' @param th.fut Futility threshold for predictive power (default: 0.2)
+#' @param th.eff Efficacy threshold for predictive power (default: 0.9)
+#' @param th.prom Predictive power threshold to trigger sample size increase (default: 0.5)
+#' @param method Method to estimate the power ("bayes" or "mcmc", default: "mcmc")
+#' @param nsim Number of trials to simulate (default: 1000)
+#' @param num_chains Number of MCMC chains (default: 4)
+#' @param n.iter Total MCMC iterations (default: 5000)
+#' @param n.adapt MCMC adaptation iterations (default: 500)
+#' @param perc_burnin Proportion of iterations for burn-in (default: 0.2)
+#' @param progress.bar Progress bar type ("text", "gui", "none")
+#'
+#' @description
+#' Simulates Bayesian clinical trials with up to two interim analyses for dose selection
+#' and sample size re-estimation. The null hypothesis is rejected if the posterior probability
+#' $Pr(\\mu_t - \\mu_c > 0 | D) > \\gamma$ exceeds a defined threshold.
+#'
+#'
+#' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
+#' @return An object of class "bcts"
+#' @export
+bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
+                 trt_ref,
+                 trt_rank = NULL, alpha = 0.025,
+                 th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
+                 method = "mcmc", nsim = 1000, num_chains = 4,
+                 n.iter = 5000, n.adapt = 500, perc_burnin = 0.2,
+                 progress.bar = "text") {
+
+
+  # Input validation
+  stopifnot(is.numeric(n_dose_sel), is.numeric(n_ss_reest),
+            is.numeric(n_pln), is.numeric(n_max),
+            is.numeric(alpha), is.numeric(th.fut), is.numeric(th.eff),
+            is.numeric(th.prom), method %in% c("bayes", "mcmc"))
+
+  # Set effect sizes for evaluating type-I error
+  mu.type1 <- mu * 0
+
+  if (is.null(n_ss_reest)) {
+    # Calibrate gamma for a one-interim design
+    message("Using bcts_one_interim.")
+    opt.gamma <- calibrate_gamma(
+      bcts_fun = function(x, req_n_events) {
+        bcts_one_interim(n_int = n_dose_sel, n_pln = n_pln, n_max = n_max,
+                         mu = mu.type1, sigma = sigma, trt_ref = trt_ref,
+                         gamma = x,
+                         trt_rank = trt_rank, th.fut = th.fut, th.eff = th.eff,
+                         th.prom = th.prom, method = method,
+                         nsim = ceiling(req_n_events/(1 - x)),
+                         num_chains = num_chains, n.iter = n.iter,
+                         n.adapt = n.adapt, perc_burnin = perc_burnin,
+                         progress.bar = progress.bar)
+      }, type1 = alpha)
+
+    ## Assess type-1 error
+    sim_type1 <- bcts_one_interim(n_int = n_dose_sel, n_pln = n_pln,
+                                  n_max = n_max,
+                                  mu = mu.type1, sigma = sigma,
+                                  trt_ref = trt_ref,
+                                  gamma = opt.gamma$gamma.opt,
+                                  trt_rank = trt_rank, th.fut = th.fut, th.eff = th.eff,
+                                  th.prom = th.prom, method = method, nsim = nsim,
+                                  num_chains = num_chains, n.iter = n.iter,
+                                  n.adapt = n.adapt, perc_burnin = perc_burnin,
+                                  progress.bar = progress.bar)
+
+    ## Assess power
+    sim_power <- bcts_one_interim(n_int = n_dose_sel, n_pln = n_pln,
+                                  n_max = n_max,
+                                  mu = mu, sigma = sigma, trt_ref = trt_ref,
+                                  gamma = opt.gamma$gamma.opt,
+                                  trt_rank = trt_rank, th.fut = th.fut, th.eff = th.eff,
+                                  th.prom = th.prom, method = method, nsim = nsim,
+                                  num_chains = num_chains, n.iter = n.iter,
+                                  n.adapt = n.adapt, perc_burnin = perc_burnin,
+                                  progress.bar = progress.bar)
+
+
+
+
+  } else {
+    # Calibrate gamma for the two-interim version
+    message("Using bcts_two_interim.")
+    opt.gamma <- calibrate_gamma(
+      bcts_fun = function(x, req_n_events) {
+        bcts_two_interim(n_int1 = n_dose_sel, n_int2 = n_ss_reest,
+                         n_pln = n_pln, n_max = n_max,
+                         mu = mu.type1, sigma = sigma, trt_ref = trt_ref,
+                         gamma = x, trt_rank = trt_rank, th.fut = th.fut,
+                         th.eff = th.eff, th.prom = th.prom, method = method,
+                         nsim = ceiling(req_n_events/(1 - x)),
+                         num_chains = num_chains, n.iter = n.iter,
+                         n.adapt = n.adapt, perc_burnin = perc_burnin,
+                         progress.bar = progress.bar)
+      }, type1 = alpha)
+
+    ## Assess type-1 error
+    sim_type1 <- bcts_two_interim(n_int1 = n_dose_sel, n_int2 = n_ss_reest,
+                                  n_pln = n_pln, n_max = n_max,
+                                  mu = mu.type1, sigma = sigma, trt_ref = trt_ref,
+                                  gamma = opt.gamma$gamma.opt,
+                                  trt_rank = trt_rank, th.fut = th.fut,
+                                  th.eff = th.eff, th.prom = th.prom, method = method,
+                                  nsim = nsim,
+                                  num_chains = num_chains, n.iter = n.iter,
+                                  n.adapt = n.adapt, perc_burnin = perc_burnin,
+                                  progress.bar = progress.bar)
+
+    ## Assess power
+    sim_power <- bcts_two_interim(n_int1 = n_dose_sel, n_int2 = n_ss_reest,
+                                  n_pln = n_pln, n_max = n_max,
+                                  mu = mu, sigma = sigma, trt_ref = trt_ref,
+                                  gamma = opt.gamma$gamma.opt,
+                                  trt_rank = trt_rank, th.fut = th.fut,
+                                  th.eff = th.eff, th.prom = th.prom, method = method,
+                                  nsim = nsim,
+                                  num_chains = num_chains, n.iter = n.iter,
+                                  n.adapt = n.adapt, perc_burnin = perc_burnin,
+                                  progress.bar = progress.bar)
+
+  }
+
+
+  out <- list(sim_type1 = sim_type1, sim_power = sim_power)
+  class(out) <- "bcts_results"
+
+  return(out)
+}
+
 
 
 #' Estimate the Power for the Difference between Two Means
@@ -419,6 +559,10 @@ prepare_jags_ppos <- function(dat, gamma, margin = 0, trt_ref = "Placebo") {
 #' @param no.looks An optional filter for the number of looks. Only bcts objects with this number of looks will be retained.
 #' @param th.fut An optional filter for the futility threshold, checked using approximate equality. Only bcts objects with this threshold will be retained.
 #' @param th.eff An optional filter for the efficacy threshold, checked using approximate equality. Only bcts objects with this threshold will be retained.
+#' @param n_int1 Optional, the interim sample size in the first stage. Only bcts objects with this interim sample size will be retained.
+#' @param n_int2 Optional, the interim sample size in the second stage. Only bcts objects with this interim sample size will be retained.
+#' @param n_pln Optional, the planned total sample size. Only bcts objects with this planned sample size will be retained.
+#' @param n_max Optional, the maximum allowable sample size. Only bcts objects with this maximum sample size will be retained.
 #' @param gamma_values An optional filter for gamma values, checked using approximate equality. Only bcts objects with the specified gamma values will be retained.
 #' @param trt_rank An optional named vector specifying treatment ranking. Each bcts object with a matching treatment ranking will be retained.
 #' @param power_lower Optional, only retain simulations with power greater than this value (without futility adjustment).
@@ -440,6 +584,10 @@ filter_bcts_by_design <- function(bcts_list,
                                   no.looks = NULL,
                                   th.fut = NULL,
                                   th.eff = NULL,
+                                  n_int1 = NULL,
+                                  n_int2 = NULL,
+                                  n_pln = NULL,
+                                  n_max = NULL,
                                   gamma_values = NULL,
                                   trt_rank = NULL,
                                   power_lower = NULL,
@@ -462,6 +610,34 @@ filter_bcts_by_design <- function(bcts_list,
   if (!is.null(th.eff)) {
     bcts_list <- Filter(function(x) {
       abs(x$th.eff - th.eff) < tolerance
+    }, bcts_list)
+  }
+
+  # Filter by interim sample size for the first stage
+  if (!is.null(n_int1)) {
+    bcts_list <- Filter(function(x) {
+      !is.null(x$n$Int1) && abs(x$n$Int1 - n_int1) < tolerance
+    }, bcts_list)
+  }
+
+  # Filter by interim sample size for the second stage
+  if (!is.null(n_int2)) {
+    bcts_list <- Filter(function(x) {
+      !is.null(x$n$Int2) && abs(x$n$Int2 - n_int2) < tolerance
+    }, bcts_list)
+  }
+
+  # Filter by planned sample size
+  if (!is.null(n_pln)) {
+    bcts_list <- Filter(function(x) {
+      !is.null(x$n$Planned) && abs(x$n$Planned - n_pln) < tolerance
+    }, bcts_list)
+  }
+
+  # Filter by maximum size
+  if (!is.null(n_max)) {
+    bcts_list <- Filter(function(x) {
+      !is.null(x$n$Maximum) && abs(x$n$Maximum - n_max) < tolerance
     }, bcts_list)
   }
 

@@ -2,17 +2,23 @@
 % Please edit documentation in R/simulation.r
 \name{mc_error_proportion}
 \alias{mc_error_proportion}
-\title{Monte Carlo error for a proportion}
+\title{Monte Carlo Error for Proportion Estimate}
 \usage{
-mc_error_proportion(x, n, level)
+mc_error_proportion(x, n, level = 0.95)
 }
 \arguments{
-\item{x}{Observed event count}
+\item{x}{Numeric. The observed event count.}
 
-\item{n}{Total number of Monte Carlo Simulations}
+\item{n}{Numeric. The total number of Monte Carlo simulations.}
 
-\item{level}{Confidence level}
+\item{level}{Numeric. The confidence level for the error bounds (default is 0.95).}
+}
+\value{
+A data frame containing the observed event count, total simulations, proportion estimate, standard error, and confidence interval.
 }
 \description{
-Monte Carlo error for a proportion
+This function calculates the Monte Carlo error for a proportion estimate based on observed event counts.
+}
+\author{
+Thomas Debray
 }

@@ -9,6 +9,10 @@ filter_bcts_by_design(
   no.looks = NULL,
   th.fut = NULL,
   th.eff = NULL,
+  n_int1 = NULL,
+  n_int2 = NULL,
+  n_pln = NULL,
+  n_max = NULL,
   gamma_values = NULL,
   trt_rank = NULL,
   power_lower = NULL,
@@ -26,6 +30,14 @@ filter_bcts_by_design(
 \item{th.fut}{An optional filter for the futility threshold, checked using approximate equality. Only bcts objects with this threshold will be retained.}
 
 \item{th.eff}{An optional filter for the efficacy threshold, checked using approximate equality. Only bcts objects with this threshold will be retained.}
+
+\item{n_int1}{Optional, the interim sample size in the first stage. Only bcts objects with this interim sample size will be retained.}
+
+\item{n_int2}{Optional, the interim sample size in the second stage. Only bcts objects with this interim sample size will be retained.}
+
+\item{n_pln}{Optional, the planned total sample size. Only bcts objects with this planned sample size will be retained.}
+
+\item{n_max}{Optional, the maximum allowable sample size. Only bcts objects with this maximum sample size will be retained.}
 
 \item{gamma_values}{An optional filter for gamma values, checked using approximate equality. Only bcts objects with the specified gamma values will be retained.}
 

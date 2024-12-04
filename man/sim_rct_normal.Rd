@@ -21,3 +21,6 @@ A dataframe with the simulated trial data
 \description{
 Simulate a randomized clinical trial
 }
+\author{
+Thomas Debray
+}
