@@ -8,7 +8,11 @@
 #' @param sigma Named vector with expected standard deviations
 #' @param trt_ref Character denoting the control treatment
 #' @param trt_rank Named vector with preference ranking for each treatment (e.g., lower doses are preferred) when multiple treatments have a posterior predictive power > 'th.eff'
-#' @param alpha Desired one-sided type-I error rate (default: 0.025)
+#' @param alpha Desired one-sided Type-I error rate. Default is `0.025`.
+#'              This represents the maximum allowable probability of rejecting the null hypothesis when it is true.
+#' @param alpha_tolerance Tolerance for the Type-I error rate. Default is `0.001`.
+#'                        This specifies the acceptable deviation from the target `alpha` during the calibration process.
+#'                        Smaller values indicate stricter adherence to the target, while larger values allow more flexibility.
 #' @param th.fut Futility threshold for predictive power (default: 0.2)
 #' @param th.eff Efficacy threshold for predictive power (default: 0.9)
 #' @param th.prom Predictive power threshold to trigger sample size increase (default: 0.5)
@@ -27,11 +31,12 @@
 #'
 #'
 #' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
+#'
 #' @return An object of class "bcts"
 #' @export
 bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                  trt_ref,
-                 trt_rank = NULL, alpha = 0.025,
+                 trt_rank = NULL, alpha = 0.025, alpha_tolerance = 0.001,
                  th.fut = 0.2, th.eff = 0.9, th.prom = 0.5,
                  method = "mcmc", nsim = 1000, num_chains = 4,
                  n.iter = 5000, n.adapt = 500, perc_burnin = 0.2,
@@ -61,7 +66,7 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                          num_chains = num_chains, n.iter = n.iter,
                          n.adapt = n.adapt, perc_burnin = perc_burnin,
                          progress.bar = progress.bar)
-      }, type1 = alpha)
+      }, type1 = alpha, type1.tolerance = alpha_tolerance)
 
     ## Assess type-1 error
     sim_type1 <- bcts_one_interim(n_int = n_dose_sel, n_pln = n_pln,
@@ -85,11 +90,7 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                                   num_chains = num_chains, n.iter = n.iter,
                                   n.adapt = n.adapt, perc_burnin = perc_burnin,
                                   progress.bar = progress.bar)
-
-
-
-
-  } else {
+  } else if (!is.null(n_ss_reest) & !is.null(n_dose_sel)) {
     # Calibrate gamma for the two-interim version
     message("Using bcts_two_interim.")
     opt.gamma <- calibrate_gamma(
@@ -103,7 +104,7 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                          num_chains = num_chains, n.iter = n.iter,
                          n.adapt = n.adapt, perc_burnin = perc_burnin,
                          progress.bar = progress.bar)
-      }, type1 = alpha)
+      }, type1 = alpha, type1.tolerance = alpha_tolerance)
 
     ## Assess type-1 error
     sim_type1 <- bcts_two_interim(n_int1 = n_dose_sel, n_int2 = n_ss_reest,
@@ -129,10 +130,13 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                                   n.adapt = n.adapt, perc_burnin = perc_burnin,
                                   progress.bar = progress.bar)
 
+  } else {
+    stop("Please provide either `n_ss_reest` or `n_dose_sel`.")
   }
 
 
-  out <- list(sim_type1 = sim_type1, sim_power = sim_power)
+  out <- list(sim_type1 = sim_type1, sim_power = sim_power,
+              opt.gamma = opt.gamma)
   class(out) <- "bcts_results"
 
   return(out)
@@ -297,6 +301,84 @@ print.bcts <- function(x, ...) {
     print(out)
 }
 
+#' @title Print Summary of bcts_results
+#' @description
+#' This function provides a detailed summary of an object of class `bcts_results`, which contains simulation results for an adaptive clinical trial.
+#' It computes and displays key statistics such as Type-I error, power (with and without futility adjustment), probabilities of triggering futility or increasing sample size, and final sample size estimates.
+#'
+#' @param x An object of class `bcts_results` containing the results of Type-I error and power simulations.
+#'          The object should include components such as `sim_type1` and `sim_power`, each containing simulation results.
+#' @param ... Optional additional arguments (currently unused).
+#'
+#' @details
+#' The function extracts and summarizes important metrics from the `bcts_results` object:
+#' - **Type-I Error**: The estimated Type-I error rate along with its confidence interval.
+#' - **Power**:
+#'   - Without futility adjustment: The power estimated without considering futility triggers.
+#'   - With futility adjustment: The power adjusted for scenarios where futility was triggered.
+#' - **Pr(fut.trig)**: The probability of triggering futility during the trial.
+#' - **Pr(inc.ss)**: The probability of increasing the sample size during the trial.
+#' - **N final**: The mean final sample size and its confidence interval.
+#'
+#' @return
+#' A printed summary table displaying:
+#' - `statistic`: The name of the statistic being summarized.
+#' - `est`: The estimated value of the statistic.
+#' - `cil`: The lower bound of the 95% confidence interval (or specified level).
+#' - `ciu`: The upper bound of the 95% confidence interval (or specified level).
+#'
+#' @importFrom binom binom.confint
+#' @importFrom dplyr %>%
+#' @importFrom rlang .data
+#' @export
+#'
+#' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
+print.bcts_results <- function(x, ...) {
+
+  conf.level <- 0.95
+
+  ## Get quantiles of final sample size
+  n_fin_qt <- stats::quantile(x$sim_power$simresults$n.final, c((1 - conf.level)/2, 1 - (1 - conf.level)/2))
+
+  type1 <- power(x = x$sim_type1, adjust_for_futility = FALSE, level = conf.level)
+
+  power_without_fut <- power(x = x$sim_power, adjust_for_futility = FALSE, level = conf.level)
+  power_with_fut <- power(x = x$sim_power, adjust_for_futility = TRUE, level = conf.level)
+
+  fut.trig <- mc_error_proportion(x = sum(x$sim_power$simresults$fut.trig),
+                                  n = nrow(x$sim_power$simresults),
+                                  level = conf.level)
+
+  inc.ss <- mc_error_proportion(x = sum(x$sim_power$simresults$inc.ss),
+                                n = nrow(x$sim_power$simresults),
+                                level = conf.level)
+
+  cat(paste("Sample size calculation for an adaptive trial with", x$sim_type1$no.looks, "looks.\n"))
+
+  out <- data.frame(
+    Statistic = c("Type-I Error",
+                  "Power (Without Futility Adjustment)",
+                  "Power (With Futility Adjustment)",
+                  "Pr(Futility Triggered)",
+                  "Pr(Sample Size Increased)",
+                  "Final Sample Size"),
+    Estimate = c(type1$est, power_without_fut$est, power_with_fut$est,
+                 fut.trig$est, inc.ss$est, mean(x$sim_power$simresults$n.final)),
+    `CI Lower` = c(type1$lower, power_without_fut$lower, power_with_fut$lower,
+                   fut.trig$lower, inc.ss$lower, n_fin_qt[1]),
+    `CI Upper` = c(type1$upper, power_without_fut$upper, power_with_fut$upper,
+                   fut.trig$upper, inc.ss$upper, n_fin_qt[2])
+  )
+
+  # Use knitr::kable for better console output
+  if (requireNamespace("knitr", quietly = TRUE)) {
+    print(knitr::kable(out, digits = 3, align = "c"))
+  } else {
+    print(out)  # Fallback to base R print if knitr is unavailable
+  }
+
+  invisible(out) # Optionally return the table for further processing
+}
 
 
 

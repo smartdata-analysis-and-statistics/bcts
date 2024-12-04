@@ -14,6 +14,7 @@ bcts(
   trt_ref,
   trt_rank = NULL,
   alpha = 0.025,
+  alpha_tolerance = 0.001,
   th.fut = 0.2,
   th.eff = 0.9,
   th.prom = 0.5,
@@ -43,7 +44,12 @@ bcts(
 
 \item{trt_rank}{Named vector with preference ranking for each treatment (e.g., lower doses are preferred) when multiple treatments have a posterior predictive power > 'th.eff'}
 
-\item{alpha}{Desired one-sided type-I error rate (default: 0.025)}
+\item{alpha}{Desired one-sided Type-I error rate. Default is \code{0.025}.
+This represents the maximum allowable probability of rejecting the null hypothesis when it is true.}
+
+\item{alpha_tolerance}{Tolerance for the Type-I error rate. Default is \code{0.001}.
+This specifies the acceptable deviation from the target \code{alpha} during the calibration process.
+Smaller values indicate stricter adherence to the target, while larger values allow more flexibility.}
 
 \item{th.fut}{Futility threshold for predictive power (default: 0.2)}
 
