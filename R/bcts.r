@@ -136,6 +136,7 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
 
 
   out <- list(sim_type1 = sim_type1, sim_power = sim_power,
+              alpha = alpha,
               opt.gamma = opt.gamma)
   class(out) <- "bcts_results"
 
@@ -330,6 +331,7 @@ print.bcts <- function(x, ...) {
 #' @importFrom binom binom.confint
 #' @importFrom dplyr %>%
 #' @importFrom rlang .data
+#' @importFrom knitr kable
 #' @export
 #'
 #' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
@@ -353,7 +355,10 @@ print.bcts_results <- function(x, ...) {
                                 n = nrow(x$sim_power$simresults),
                                 level = conf.level)
 
-  cat(paste("Sample size calculation for an adaptive trial with", x$sim_type1$no.looks, "looks.\n"))
+  cat("Sample Size Calculation for an Adaptive Trial\n")
+  cat("------------------------------------------------------------\n")
+  cat(paste("Target Type-I Error:", x$alpha*100, "%\n"))
+  cat(paste("Number of Looks:", x$sim_type1$no.looks))
 
   out <- data.frame(
     Statistic = c("Type-I Error",
@@ -361,7 +366,7 @@ print.bcts_results <- function(x, ...) {
                   "Power (With Futility Adjustment)",
                   "Pr(Futility Triggered)",
                   "Pr(Sample Size Increased)",
-                  "Final Sample Size"),
+                  "Final Sample Size (Mean)"),
     Estimate = c(type1$est, power_without_fut$est, power_with_fut$est,
                  fut.trig$est, inc.ss$est, mean(x$sim_power$simresults$n.final)),
     `CI Lower` = c(type1$lower, power_without_fut$lower, power_with_fut$lower,
@@ -370,12 +375,16 @@ print.bcts_results <- function(x, ...) {
                    fut.trig$upper, inc.ss$upper, n_fin_qt[2])
   )
 
-  # Use knitr::kable for better console output
-  if (requireNamespace("knitr", quietly = TRUE)) {
-    print(knitr::kable(out, digits = 3, align = "c"))
-  } else {
-    print(out)  # Fallback to base R print if knitr is unavailable
-  }
+  # Format table with knitr
+  print(kable(out, digits = 3, align = "c", col.names = c("Statistic", "Estimate", "CI Lower", "CI Upper")))
+  cat("\n")
+  cat("Key Decision Rule:\n")
+  cat("------------------------------------------------------------\n")
+  cat("The null hypothesis should be rejected when Pr(mu_t - mu_c > 0 | Data) > ",
+             round(x$opt.gamma$gamma.opt, 5),".\n")
+  cat("This threshold accounts for interim looks and represents an increase from", (1 - x$alpha), "\n")
+  cat("corresponding to an alpha of", x$alpha*100, "% under a single-look design.\n")
+  cat("------------------------------------------------------------\n")
 
   invisible(out) # Optionally return the table for further processing
 }
