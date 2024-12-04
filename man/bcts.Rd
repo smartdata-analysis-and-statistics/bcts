@@ -28,21 +28,23 @@ bcts(
 )
 }
 \arguments{
-\item{n_dose_sel}{First interim sample size (for dose selection)}
+\item{n_dose_sel}{Sample size at the first interim analysis for dose selection.}
 
-\item{n_ss_reest}{Optional second interim sample size (for sample size re-estimation)}
+\item{n_ss_reest}{Optional sample size at the second interim analysis for sample size re-estimation.
+If not provided, only one interim analysis is performed.}
 
-\item{n_pln}{Planned sample size}
+\item{n_pln}{Planned sample size for the trial.}
 
-\item{n_max}{Maximum sample size}
+\item{n_max}{Maximum allowable sample size for the trial.}
 
-\item{mu}{Named vector with expected effect sizes}
+\item{mu}{Named vector of expected effect sizes for each treatment group (including the control group).}
 
-\item{sigma}{Named vector with expected standard deviations}
+\item{sigma}{Named vector of expected standard deviations for each treatment group.}
 
-\item{trt_ref}{Character denoting the control treatment}
+\item{trt_ref}{Character string specifying the control treatment (reference group)}
 
-\item{trt_rank}{Named vector with preference ranking for each treatment (e.g., lower doses are preferred) when multiple treatments have a posterior predictive power > 'th.eff'}
+\item{trt_rank}{Named vector of preference rankings for each treatment group.
+Lower values indicate higher preference, used when multiple treatments exceed the efficacy threshold (\code{th.eff}).}
 
 \item{alpha}{Desired one-sided Type-I error rate. Default is \code{0.025}.
 This represents the maximum allowable probability of rejecting the null hypothesis when it is true.}
@@ -51,33 +53,60 @@ This represents the maximum allowable probability of rejecting the null hypothes
 This specifies the acceptable deviation from the target \code{alpha} during the calibration process.
 Smaller values indicate stricter adherence to the target, while larger values allow more flexibility.}
 
-\item{th.fut}{Futility threshold for predictive power (default: 0.2)}
+\item{th.fut}{Predictive power threshold for declaring futility. Default is \code{0.2}.}
 
-\item{th.eff}{Efficacy threshold for predictive power (default: 0.9)}
+\item{th.eff}{Predictive power threshold for declaring efficacy. Default is \code{0.9}.}
 
-\item{th.prom}{Predictive power threshold to trigger sample size increase (default: 0.5)}
+\item{th.prom}{Predictive power threshold that triggers sample size re-estimation. Default is \code{0.5}.}
 
-\item{method}{Method to estimate the power ("bayes" or "mcmc", default: "mcmc")}
+\item{method}{Method for power estimation. Options are \code{"bayes"} for a fully Bayesian approach or \code{"mcmc"} for a frequentist approximation. Default is \code{"mcmc"}.}
 
 \item{nsim}{Number of trials to simulate (default: 1000)}
 
 \item{num_chains}{Number of MCMC chains (default: 4)}
 
-\item{n.iter}{Total MCMC iterations (default: 5000)}
+\item{n.iter}{Total number of MCMC iterations. Default is \code{5000}.}
 
-\item{n.adapt}{MCMC adaptation iterations (default: 500)}
+\item{n.adapt}{Number of adaptation iterations for MCMC. Default is \code{500}.}
 
-\item{perc_burnin}{Proportion of iterations for burn-in (default: 0.2)}
+\item{perc_burnin}{Proportion of MCMC iterations used for burn-in. Default is \code{0.2}.}
 
-\item{progress.bar}{Progress bar type ("text", "gui", "none")}
+\item{progress.bar}{Type of progress bar displayed during simulations. Options are \code{"text"}, \code{"gui"}, and \code{"none"}.}
 }
 \value{
-An object of class "bcts"
+An object of class \code{"bcts_results"} containing the following components:
+\itemize{
+\item \strong{sim_type1}: Results from Type-I error simulations.
+\item \strong{sim_power}: Results from power simulations.
+\item \strong{design}: Details of the trial design, including \code{alpha}.
+\item \strong{result}: A list with the calibrated \eqn{\gamma} threshold.
+\item \strong{gamma.table}: A data frame summarizing the calibration process.
+}
 }
 \description{
-Simulates Bayesian clinical trials with up to two interim analyses for dose selection
-and sample size re-estimation. The null hypothesis is rejected if the posterior probability
-$Pr(\\mu_t - \\mu_c > 0 | D) > \\gamma$ exceeds a defined threshold.
+This function performs Bayesian clinical trial simulations to evaluate adaptive trial designs.
+It allows for up to two interim analyses, one for dose selection and one for sample size re-estimation.
+The null hypothesis is rejected if the posterior probability \eqn{Pr(\mu_t - \mu_c > 0 | \text{Data}) > \gamma} exceeds a calibrated threshold.
+}
+\details{
+The function supports two designs:
+\itemize{
+\item \strong{One interim analysis}: Used for dose selection only.
+\item \strong{Two interim analyses}: The first for dose selection and the second for sample size re-estimation.
+}
+
+The function begins by calibrating the \eqn{\gamma} threshold to achieve the target Type-I error rate (\eqn{\alpha}).
+After calibration, the Type-I error and power are assessed under the calibrated threshold.
+}
+\examples{
+## Not run:
+bcts(n_dose_sel = 60, n_ss_reest = 175, n_pln = 200, n_max = 250,
+     mu = c("Placebo" = 0, "Dose 1" = 0.4, "Dose 2" = 0.5),
+     sigma = c("Placebo" = 1, "Dose 1" = 1, "Dose 2" = 1),
+     trt_ref = "Placebo", method = "mcmc", alpha = 0.01,
+     th.fut = 0.15, th.eff = 0.9, th.prom = 0.5, nsim = 10000)
+## End(Not run)
+
 }
 \author{
 Thomas Debray \email{tdebray@fromdatatowisdom.com}

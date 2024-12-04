@@ -1,38 +1,63 @@
 #' Bayesian Clinical Trial Simulation (BCTS)
 #'
-#' @param n_dose_sel First interim sample size (for dose selection)
-#' @param n_ss_reest Optional second interim sample size (for sample size re-estimation)
-#' @param n_pln Planned sample size
-#' @param n_max Maximum sample size
-#' @param mu Named vector with expected effect sizes
-#' @param sigma Named vector with expected standard deviations
-#' @param trt_ref Character denoting the control treatment
-#' @param trt_rank Named vector with preference ranking for each treatment (e.g., lower doses are preferred) when multiple treatments have a posterior predictive power > 'th.eff'
+#' @description
+#' This function performs Bayesian clinical trial simulations to evaluate adaptive trial designs.
+#' It allows for up to two interim analyses, one for dose selection and one for sample size re-estimation.
+#' The null hypothesis is rejected if the posterior probability \eqn{Pr(\mu_t - \mu_c > 0 | \text{Data}) > \gamma} exceeds a calibrated threshold.
+#'
+#' @param n_dose_sel Sample size at the first interim analysis for dose selection.
+#' @param n_ss_reest Optional sample size at the second interim analysis for sample size re-estimation.
+#'                   If not provided, only one interim analysis is performed.
+#' @param n_pln Planned sample size for the trial.
+#' @param n_max Maximum allowable sample size for the trial.
+#' @param mu Named vector of expected effect sizes for each treatment group (including the control group).
+#' @param sigma Named vector of expected standard deviations for each treatment group.
+#' @param trt_ref Character string specifying the control treatment (reference group)
+#' @param trt_rank Named vector of preference rankings for each treatment group.
+#'                 Lower values indicate higher preference, used when multiple treatments exceed the efficacy threshold (`th.eff`).
 #' @param alpha Desired one-sided Type-I error rate. Default is `0.025`.
 #'              This represents the maximum allowable probability of rejecting the null hypothesis when it is true.
 #' @param alpha_tolerance Tolerance for the Type-I error rate. Default is `0.001`.
 #'                        This specifies the acceptable deviation from the target `alpha` during the calibration process.
 #'                        Smaller values indicate stricter adherence to the target, while larger values allow more flexibility.
-#' @param th.fut Futility threshold for predictive power (default: 0.2)
-#' @param th.eff Efficacy threshold for predictive power (default: 0.9)
-#' @param th.prom Predictive power threshold to trigger sample size increase (default: 0.5)
-#' @param method Method to estimate the power ("bayes" or "mcmc", default: "mcmc")
+#' @param th.fut Predictive power threshold for declaring futility. Default is `0.2`.
+#' @param th.eff Predictive power threshold for declaring efficacy. Default is `0.9`.
+#' @param th.prom  Predictive power threshold that triggers sample size re-estimation. Default is `0.5`.
+#' @param method Method for power estimation. Options are `"bayes"` for a fully Bayesian approach or `"mcmc"` for a frequentist approximation. Default is `"mcmc"`.
 #' @param nsim Number of trials to simulate (default: 1000)
 #' @param num_chains Number of MCMC chains (default: 4)
-#' @param n.iter Total MCMC iterations (default: 5000)
-#' @param n.adapt MCMC adaptation iterations (default: 500)
-#' @param perc_burnin Proportion of iterations for burn-in (default: 0.2)
-#' @param progress.bar Progress bar type ("text", "gui", "none")
+#' @param n.iter Total number of MCMC iterations. Default is `5000`.
+#' @param n.adapt Number of adaptation iterations for MCMC. Default is `500`.
+#' @param perc_burnin Proportion of MCMC iterations used for burn-in. Default is `0.2`.
+#' @param progress.bar Type of progress bar displayed during simulations. Options are `"text"`, `"gui"`, and `"none"`.
 #'
-#' @description
-#' Simulates Bayesian clinical trials with up to two interim analyses for dose selection
-#' and sample size re-estimation. The null hypothesis is rejected if the posterior probability
-#' $Pr(\\mu_t - \\mu_c > 0 | D) > \\gamma$ exceeds a defined threshold.
+#' @details
+#' The function supports two designs:
+#' - **One interim analysis**: Used for dose selection only.
+#' - **Two interim analyses**: The first for dose selection and the second for sample size re-estimation.
 #'
+#' The function begins by calibrating the \eqn{\gamma} threshold to achieve the target Type-I error rate (\eqn{\alpha}).
+#' After calibration, the Type-I error and power are assessed under the calibrated threshold.
 #'
 #' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 #'
-#' @return An object of class "bcts"
+#' @return
+#' An object of class `"bcts_results"` containing the following components:
+#' - **sim_type1**: Results from Type-I error simulations.
+#' - **sim_power**: Results from power simulations.
+#' - **design**: Details of the trial design, including `alpha`.
+#' - **result**: A list with the calibrated \eqn{\gamma} threshold.
+#' - **gamma.table**: A data frame summarizing the calibration process.
+#'
+#' @examples
+#' \dontrun{
+#' bcts(n_dose_sel = 60, n_ss_reest = 175, n_pln = 200, n_max = 250,
+#'      mu = c("Placebo" = 0, "Dose 1" = 0.4, "Dose 2" = 0.5),
+#'      sigma = c("Placebo" = 1, "Dose 1" = 1, "Dose 2" = 1),
+#'      trt_ref = "Placebo", method = "mcmc", alpha = 0.01,
+#'      th.fut = 0.15, th.eff = 0.9, th.prom = 0.5, nsim = 10000)
+#' }
+#'
 #' @export
 bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                  trt_ref,
@@ -49,16 +74,13 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
             is.numeric(alpha), is.numeric(th.fut), is.numeric(th.eff),
             is.numeric(th.prom), method %in% c("bayes", "mcmc"))
 
-  # Set effect sizes for evaluating type-I error
-  mu.type1 <- mu * 0
-
   if (is.null(n_ss_reest)) {
     # Calibrate gamma for a one-interim design
     message("Using bcts_one_interim.")
     opt.gamma <- calibrate_gamma(
       bcts_fun = function(x, nsim) {
         bcts_one_interim(n_int = n_dose_sel, n_pln = n_pln, n_max = n_max,
-                         mu = mu.type1, sigma = sigma, trt_ref = trt_ref,
+                         mu = mu * 0, sigma = sigma, trt_ref = trt_ref,
                          gamma = x,
                          trt_rank = trt_rank, th.fut = th.fut, th.eff = th.eff,
                          th.prom = th.prom, method = method,
@@ -67,9 +89,6 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                          n.adapt = n.adapt, perc_burnin = perc_burnin,
                          progress.bar = progress.bar)
       }, type1 = alpha, type1.tolerance = alpha_tolerance, nsim = nsim)
-
-    ## Assess type-1 error
-    sim_type1 <- opt.gamma$sim.opt
 
     ## Assess power
     sim_power <- bcts_one_interim(n_int = n_dose_sel, n_pln = n_pln,
@@ -88,7 +107,7 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
       bcts_fun = function(x, nsim) {
         bcts_two_interim(n_int1 = n_dose_sel, n_int2 = n_ss_reest,
                          n_pln = n_pln, n_max = n_max,
-                         mu = mu.type1, sigma = sigma, trt_ref = trt_ref,
+                         mu = mu * 0, sigma = sigma, trt_ref = trt_ref,
                          gamma = x, trt_rank = trt_rank, th.fut = th.fut,
                          th.eff = th.eff, th.prom = th.prom, method = method,
                          nsim = nsim,
@@ -96,9 +115,6 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                          n.adapt = n.adapt, perc_burnin = perc_burnin,
                          progress.bar = progress.bar)
       }, type1 = alpha, type1.tolerance = alpha_tolerance,nsim = nsim)
-
-    ## Assess type-1 error
-    sim_type1 <- opt.gamma$sim.opt
 
     ## Assess power
     sim_power <- bcts_two_interim(n_int1 = n_dose_sel, n_int2 = n_ss_reest,
@@ -116,8 +132,7 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
     stop("Please provide either `n_ss_reest` or `n_dose_sel`.")
   }
 
-
-  out <- list(sim_type1 = sim_type1,
+  out <- list(sim_type1 = opt.gamma$sim.opt, 
               sim_power = sim_power,
               design = list(alpha = alpha),
               result = list(gamma = opt.gamma$gamma.opt),
@@ -342,9 +357,15 @@ print.bcts_results <- function(x, ...) {
   cat("Sample Size Calculation for an Adaptive Trial\n")
   cat("------------------------------------------------------------\n")
   cat(paste("Target Type-I Error:", x$design$alpha*100, "%\n"))
-  cat(paste("Number of Looks:", x$sim_type1$no.looks, "\n\n"))
+  cat(paste("Number of Looks:", x$sim_type1$no.looks, "\n"))
 
-  cat("Interim Analysis Timepoints:\n")
+  cat("\nExpected Effect Sizes and Standard Deviations (per treatment group):\n")
+  for (treatment in union(names(x$sim_power$mu), names(x$sim_power$sigma))) {
+    effect_size <- ifelse(is.null(x$sim_power$mu[[treatment]]), "N/A", x$sim_power$mu[[treatment]])
+    sd <- ifelse(is.null(x$sim_power$sigma[[treatment]]), "N/A", x$sim_power$sigma[[treatment]])
+    cat("-", treatment, ": Effect Size =", effect_size, ", SD =", sd, "\n")
+  }
+  cat("\nInterim Analysis Timepoints:\n")
   if (x$sim_type1$no.looks == 2) {
     cat("- Interim 1:", x$sim_power$n$Int1, "patients with outcome data\n")
     cat("- Interim 2:", x$sim_power$n$Int2, "patients with outcome data\n")

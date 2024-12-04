@@ -164,6 +164,7 @@ calibrate_gamma <- function(bcts_fun,
     # exp(beta0 + beta1* Tgamma) = p.success
     # beta0 + beta1* Tgamma = log(p.success)
     # Tgamma = (log(p.success)-beta0)/beta1
+    # Gamma = expit(Tgamma)
 
     gamma.test.new <- 1/(1 + exp(-(log(type1) - coef(fit)[1])/coef(fit)[2]))
     sim.new <- bcts_fun(gamma.test.new, nsim = nsim)
