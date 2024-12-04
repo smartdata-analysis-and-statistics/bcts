@@ -89,6 +89,7 @@ mc_error_proportion <- function(x, n, level = 0.95) {
 #'                 It should return a list containing a `simresults` object with details such as `gamma`, `nsim`, and `rejectH0.final`.
 #' @param type1 The target Type-I error rate.
 #' @param type1.tolerance The acceptable tolerance for the difference between the empirical and target Type-I error rate. Default is `0.001`.
+#' @param nsim Number of trials to simulate (default: 1000)
 #' @param gamma_scaling A numeric value used to scale or adjust the gamma parameter during the initial step of the Type-I error estimation process.
 #'                      This factor is applied as an exponent to `1-gamma` in initial calculations.
 #' @param req_n_events Initial number of required events for the simulation. This value is increased iteratively to ensure robust calibration. Default is `10`.
@@ -132,17 +133,18 @@ mc_error_proportion <- function(x, n, level = 0.95) {
 calibrate_gamma <- function(bcts_fun,
                             type1 = 0.025,
                             type1.tolerance = 0.001,
+                            nsim = 1000,
                             gamma_scaling = 0.75,
                             req_n_events = 10,
                             max.iter = 10) {
   iter <- 1
 
   # Estimate alpha for the initial gamma
-  sim.new <- bcts_fun(1 - type1, req_n_events = req_n_events)
+  sim.new <- bcts_fun(1 - type1, nsim = ceiling(req_n_events/type1))
   power.sim.new <- power(sim.new, adjust_for_futility = FALSE) #No futility adjustment for assessing type-1
 
   # Estimate alpha for an extreme value of gamma
-  sim.cal <- bcts_fun((1 - type1)^gamma_scaling, req_n_events = req_n_events)
+  sim.cal <- bcts_fun((1 - type1)^gamma_scaling, nsim = ceiling(req_n_events/(1 - (1 - type1)^gamma_scaling)))
   power.sim.cal <- power(sim.cal, adjust_for_futility = FALSE) #No futility adjustment for assessing type-1
 
   # Estimate binomial model
@@ -164,7 +166,7 @@ calibrate_gamma <- function(bcts_fun,
     # Tgamma = (log(p.success)-beta0)/beta1
 
     gamma.test.new <- 1/(1 + exp(-(log(type1) - coef(fit)[1])/coef(fit)[2]))
-    sim.new <- bcts_fun(gamma.test.new, req_n_events = req_n_events)
+    sim.new <- bcts_fun(gamma.test.new, nsim = nsim)
     power.sim.new <- power(sim.new, adjust_for_futility = FALSE)
 
     ds.bin <- ds.bin %>% add_row(

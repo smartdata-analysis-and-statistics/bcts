@@ -8,6 +8,7 @@ calibrate_gamma(
   bcts_fun,
   type1 = 0.025,
   type1.tolerance = 0.001,
+  nsim = 1000,
   gamma_scaling = 0.75,
   req_n_events = 10,
   max.iter = 10
@@ -20,6 +21,8 @@ It should return a list containing a \code{simresults} object with details such 
 \item{type1}{The target Type-I error rate.}
 
 \item{type1.tolerance}{The acceptable tolerance for the difference between the empirical and target Type-I error rate. Default is \code{0.001}.}
+
+\item{nsim}{Number of trials to simulate (default: 1000)}
 
 \item{gamma_scaling}{A numeric value used to scale or adjust the gamma parameter during the initial step of the Type-I error estimation process.
 This factor is applied as an exponent to \code{1-gamma} in initial calculations.}

@@ -56,29 +56,20 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
     # Calibrate gamma for a one-interim design
     message("Using bcts_one_interim.")
     opt.gamma <- calibrate_gamma(
-      bcts_fun = function(x, req_n_events) {
+      bcts_fun = function(x, nsim) {
         bcts_one_interim(n_int = n_dose_sel, n_pln = n_pln, n_max = n_max,
                          mu = mu.type1, sigma = sigma, trt_ref = trt_ref,
                          gamma = x,
                          trt_rank = trt_rank, th.fut = th.fut, th.eff = th.eff,
                          th.prom = th.prom, method = method,
-                         nsim = ceiling(req_n_events/(1 - x)),
+                         nsim = nsim,
                          num_chains = num_chains, n.iter = n.iter,
                          n.adapt = n.adapt, perc_burnin = perc_burnin,
                          progress.bar = progress.bar)
-      }, type1 = alpha, type1.tolerance = alpha_tolerance)
+      }, type1 = alpha, type1.tolerance = alpha_tolerance, nsim = nsim)
 
     ## Assess type-1 error
-    sim_type1 <- bcts_one_interim(n_int = n_dose_sel, n_pln = n_pln,
-                                  n_max = n_max,
-                                  mu = mu.type1, sigma = sigma,
-                                  trt_ref = trt_ref,
-                                  gamma = opt.gamma$gamma.opt,
-                                  trt_rank = trt_rank, th.fut = th.fut, th.eff = th.eff,
-                                  th.prom = th.prom, method = method, nsim = nsim,
-                                  num_chains = num_chains, n.iter = n.iter,
-                                  n.adapt = n.adapt, perc_burnin = perc_burnin,
-                                  progress.bar = progress.bar)
+    sim_type1 <- opt.gamma$sim.opt
 
     ## Assess power
     sim_power <- bcts_one_interim(n_int = n_dose_sel, n_pln = n_pln,
@@ -94,29 +85,20 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
     # Calibrate gamma for the two-interim version
     message("Using bcts_two_interim.")
     opt.gamma <- calibrate_gamma(
-      bcts_fun = function(x, req_n_events) {
+      bcts_fun = function(x, nsim) {
         bcts_two_interim(n_int1 = n_dose_sel, n_int2 = n_ss_reest,
                          n_pln = n_pln, n_max = n_max,
                          mu = mu.type1, sigma = sigma, trt_ref = trt_ref,
                          gamma = x, trt_rank = trt_rank, th.fut = th.fut,
                          th.eff = th.eff, th.prom = th.prom, method = method,
-                         nsim = ceiling(req_n_events/(1 - x)),
+                         nsim = nsim,
                          num_chains = num_chains, n.iter = n.iter,
                          n.adapt = n.adapt, perc_burnin = perc_burnin,
                          progress.bar = progress.bar)
-      }, type1 = alpha, type1.tolerance = alpha_tolerance)
+      }, type1 = alpha, type1.tolerance = alpha_tolerance,nsim = nsim)
 
     ## Assess type-1 error
-    sim_type1 <- bcts_two_interim(n_int1 = n_dose_sel, n_int2 = n_ss_reest,
-                                  n_pln = n_pln, n_max = n_max,
-                                  mu = mu.type1, sigma = sigma, trt_ref = trt_ref,
-                                  gamma = opt.gamma$gamma.opt,
-                                  trt_rank = trt_rank, th.fut = th.fut,
-                                  th.eff = th.eff, th.prom = th.prom, method = method,
-                                  nsim = nsim,
-                                  num_chains = num_chains, n.iter = n.iter,
-                                  n.adapt = n.adapt, perc_burnin = perc_burnin,
-                                  progress.bar = progress.bar)
+    sim_type1 <- opt.gamma$sim.opt
 
     ## Assess power
     sim_power <- bcts_two_interim(n_int1 = n_dose_sel, n_int2 = n_ss_reest,
@@ -135,9 +117,11 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
   }
 
 
-  out <- list(sim_type1 = sim_type1, sim_power = sim_power,
-              alpha = alpha,
-              opt.gamma = opt.gamma)
+  out <- list(sim_type1 = sim_type1,
+              sim_power = sim_power,
+              design = list(alpha = alpha),
+              result = list(gamma = opt.gamma$gamma.opt),
+              gamma.table = opt.gamma$table)
   class(out) <- "bcts_results"
 
   return(out)
@@ -357,8 +341,17 @@ print.bcts_results <- function(x, ...) {
 
   cat("Sample Size Calculation for an Adaptive Trial\n")
   cat("------------------------------------------------------------\n")
-  cat(paste("Target Type-I Error:", x$alpha*100, "%\n"))
-  cat(paste("Number of Looks:", x$sim_type1$no.looks))
+  cat(paste("Target Type-I Error:", x$design$alpha*100, "%\n"))
+  cat(paste("Number of Looks:", x$sim_type1$no.looks, "\n\n"))
+
+  cat("Interim Analysis Timepoints:\n")
+  if (x$sim_type1$no.looks == 2) {
+    cat("- Interim 1:", x$sim_power$n$Int1, "patients with outcome data\n")
+    cat("- Interim 2:", x$sim_power$n$Int2, "patients with outcome data\n")
+  }
+  cat("\nSample Size Details:\n")
+  cat("- Planned Sample Size:", x$sim_power$n$Planned, "patients\n")
+  cat("- Maximum Sample Size:", x$sim_power$n$Maximum, "patients")
 
   out <- data.frame(
     Statistic = c("Type-I Error",
@@ -381,9 +374,9 @@ print.bcts_results <- function(x, ...) {
   cat("Key Decision Rule:\n")
   cat("------------------------------------------------------------\n")
   cat("The null hypothesis should be rejected when Pr(mu_t - mu_c > 0 | Data) > ",
-             round(x$opt.gamma$gamma.opt, 5),".\n")
-  cat("This threshold accounts for interim looks and represents an increase from", (1 - x$alpha), "\n")
-  cat("corresponding to an alpha of", x$alpha*100, "% under a single-look design.\n")
+             round(x$result$gamma, 5),".\n")
+  cat("This threshold accounts for interim looks and represents an increase from", (1 - x$design$alpha), "\n")
+  cat("corresponding to an alpha of", x$design$alpha*100, "% under a single-look design.\n")
   cat("------------------------------------------------------------\n")
 
   invisible(out) # Optionally return the table for further processing
