@@ -90,8 +90,9 @@ An object of class \code{"bcts_results"} containing the following components:
 }
 \item \strong{result}: A list with the calibrated results:
 \itemize{
-\item \code{gamma}: Calibrated threshold for rejecting the null hypothesis.
-\item \code{z.crit}: Critical value to evaluate the null hypothesis (\eqn{z = \Phi^{-1}(\gamma)}).
+\item \code{gamma_threshold}: Calibrated threshold for rejecting the null hypothesis.
+\item \code{critical_z_value}: Critical value to evaluate the null hypothesis (\eqn{z = \Phi^{-1}(\gamma)}).
+\item \code{critical_p_value}: Critical p-value corresponding to \eqn{z.crit}, representing the smallest significance level at which the null hypothesis should be rejected.
 }
 \item \strong{gamma.table}: A data frame summarizing the gamma calibration process,
 including the tested gamma values and their corresponding Type-I error rates.

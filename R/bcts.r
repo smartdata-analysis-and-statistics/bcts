@@ -54,8 +54,9 @@
 #'     - `n.adapt`: Number of adaptation iterations for MCMC.
 #'     - `perc_burnin`: Proportion of MCMC iterations used for burn-in.
 #' - **result**: A list with the calibrated results:
-#'     - `gamma`: Calibrated threshold for rejecting the null hypothesis.
-#'     - `z.crit`: Critical value to evaluate the null hypothesis (\eqn{z = \Phi^{-1}(\gamma)}).
+#'     - `gamma_threshold`: Calibrated threshold for rejecting the null hypothesis.
+#'     - `critical_z_value`: Critical value to evaluate the null hypothesis (\eqn{z = \Phi^{-1}(\gamma)}).
+#'     - `critical_p_value`: Critical p-value corresponding to \eqn{z.crit}, representing the smallest significance level at which the null hypothesis should be rejected.
 #' - **gamma.table**: A data frame summarizing the gamma calibration process,
 #'   including the tested gamma values and their corresponding Type-I error rates.
 #'
@@ -87,6 +88,9 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
   trt_names <- extract_treatment_names(mu = mu, sigma = sigma)
 
   if (is.null(n_ss_reest)) {
+    # Set no.looks
+    no.looks <- 1
+
     # Calibrate gamma for a one-interim design
     message("Using bcts_one_interim.")
     opt.gamma <- calibrate_gamma(
@@ -113,6 +117,9 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                                   n.adapt = n.adapt, perc_burnin = perc_burnin,
                                   progress.bar = progress.bar)
   } else if (!is.null(n_ss_reest) & !is.null(n_dose_sel)) {
+    # Set no.looks
+    no.looks <- 2
+
     # Calibrate gamma for the two-interim version
     message("Using bcts_two_interim.")
     opt.gamma <- calibrate_gamma(
@@ -144,9 +151,22 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
     stop("Please provide either `n_ss_reest` or `n_dose_sel`.")
   }
 
+  # Derive summary metrics
+  z_crit <- qnorm(opt.gamma$gamma.opt)
+
+  # Extract key results
+  type1 <- power(opt.gamma$sim.opt, adjust_for_futility = FALSE)
+  power_without_fut <- power(adjust_for_futility = FALSE)
+  power_with_fut <- power(sim_power, adjust_for_futility = TRUE)
+  fut.trig <- mc_error_proportion(x = sum(sim_power$simresults$fut.trig),
+                                  n = nrow(sim_power$simresults))
+  inc.ss <- mc_error_proportion(x = sum(sim_power$simresults$inc.ss),
+                                n = nrow(sim_power$simresults))
+
   out <- list(sim_type1 = opt.gamma$sim.opt,
               sim_power = sim_power,
-              design = list(alpha = alpha,
+              design = list(no.looks = no.looks,
+                            alpha = alpha,
                             trt_ref = trt_ref,
                             trt_active = setdiff(trt_names, trt_ref),
                             trt_rank = trt_rank,
@@ -161,8 +181,14 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                                 n.iter = n.iter,
                                 n.adapt = n.adapt,
                                 perc_burnin = perc_burnin),
-              result = list(gamma = opt.gamma$gamma.opt,
-                            z.crit = qnorm(opt.gamma$gamma.opt)),
+              result = list(
+                type1_error = type1,                           # Clearly indicates Type-I error
+                power_no_futility = power_without_fut,         # Describes power without futility adjustment
+                power_with_futility = power_with_fut,          # Describes power with futility adjustment
+                gamma_threshold = opt.gamma$gamma.opt,         # Indicates the gamma threshold
+                critical_z_value = z_crit,                     # Clearly indicates the critical z-value
+                critical_p_value = pnorm(z_crit, lower.tail = FALSE) # Describes the critical p-value
+              ),
               gamma.table = opt.gamma$table)
   class(out) <- "bcts_results"
 
@@ -356,6 +382,7 @@ print.bcts <- function(x, ...) {
 #'
 #' @importFrom binom binom.confint
 #' @importFrom dplyr %>%
+#' @importFrom purrr map_chr
 #' @importFrom rlang .data
 #' @importFrom knitr kable
 #' @export
@@ -364,6 +391,9 @@ print.bcts <- function(x, ...) {
 print.bcts_results <- function(x, ...) {
 
   conf.level <- 0.95
+
+  ## Check environment
+  markdown <- !interactive()
 
   ## Get quantiles of final sample size
   n_fin_qt <- stats::quantile(x$sim_power$simresults$n.final, c((1 - conf.level)/2, 1 - (1 - conf.level)/2))
@@ -381,35 +411,44 @@ print.bcts_results <- function(x, ...) {
                                 n = nrow(x$sim_power$simresults),
                                 level = conf.level)
 
-  cat("Sample Size Calculation for an Adaptive Trial\n")
-  cat("------------------------------------------------------------\n")
-  cat("Design Summary:\n")
-  cat("  - Target Type-I Error:", x$design$alpha, "\n")
-  cat("  - Number of Looks:", x$sim_type1$no.looks, "\n")
-
-  cat("\nPPOS Thresholds:\n")
-  cat("  - Futility:", sprintf("%.2f%%", x$design$th.fut * 100), "\n")
-  cat("  - Efficacy:", sprintf("%.2f%%", x$design$th.eff * 100), "\n")
-  cat("  - Sample Size Re-estimation:", sprintf("%.2f%%", x$design$th.prom * 100), "\n")
-
-  cat("\nExpected Effect Sizes and Standard Deviations (per treatment group):\n")
-  for (treatment in union(x$design$trt_ref, x$design$trt_active)) {
-    effect_size <- ifelse(is.null(x$sim_power$mu[[treatment]]), "N/A", x$sim_power$mu[[treatment]])
-    sd <- ifelse(is.null(x$sim_power$sigma[[treatment]]), "N/A", x$sim_power$sigma[[treatment]])
-
-    # Check if the treatment is the reference group
-    is_reference <- ifelse(treatment == x$design$trt_ref, " (Reference)", "")
-
-    cat("-", treatment, ": Effect Size =", effect_size, ", SD =", sd, is_reference, "\n")
+  ## Header
+  if (markdown) {
+    cat("## Sample Size Calculation for an Adaptive Trial\n\n")
+    cat("### Design Summary\n")
+  } else {
+    cat("Sample Size Calculation for an Adaptive Trial\n\n")
+    cat("Design Summary:\n")
   }
-  cat("\nInterim Analysis Timepoints:\n")
-  if (x$sim_type1$no.looks == 2) {
+  cat("- Target Type-I Error:", sprintf("%.2f%%", x$design$alpha * 100), "\n")
+  cat("- Number of Looks:", x$design$no.looks, "\n\n")
+
+  ## PPOS Thresholds
+  if (markdown) cat("## PPOS Thresholds\n") else cat("PPOS Thresholds:\n")
+  cat("- Futility:", sprintf("%.2f%%", x$design$th.fut * 100), "\n")
+  cat("- Efficacy:", sprintf("%.2f%%", x$design$th.eff * 100), "\n")
+  cat("- Sample Size Re-estimation:", sprintf("%.2f%%", x$design$th.prom * 100), "\n\n")
+
+  ## Effect Sizes and SD
+  if (markdown) cat("## Expected Effect Sizes and Standard Deviations\n") else cat("Expected Effect Sizes and Standard Deviations:\n")
+  effect_sizes <- union(x$design$trt_ref, x$design$trt_active) %>%
+    map_chr(function(treatment) {
+      effect_size <- ifelse(is.null(x$sim_power$mu[[treatment]]), "N/A", x$sim_power$mu[[treatment]])
+      sd <- ifelse(is.null(x$sim_power$sigma[[treatment]]), "N/A", x$sim_power$sigma[[treatment]])
+      is_reference <- ifelse(treatment == x$design$trt_ref, " (Reference)", "")
+      paste("-", treatment, ": Effect Size =", effect_size, ", SD =", sd, is_reference)
+    })
+  cat(paste(effect_sizes, collapse = "\n"), "\n\n")
+
+  ## Sample Size Details
+  if (markdown) cat("## Sample Size Details\n") else cat("Sample Size Details:\n")
+  if (x$design$no.looks == 2) {
     cat("- Interim 1:", x$sim_power$n$Int1, "patients with outcome data\n")
     cat("- Interim 2:", x$sim_power$n$Int2, "patients with outcome data\n")
+  } else if (x$design$no.looks == 2) {
+    cat("- Interim:", x$sim_power$n$Int1, "patients with outcome data\n")
   }
-  cat("\nSample Size Details:\n")
   cat("- Planned Sample Size:", x$sim_power$n$Planned, "patients\n")
-  cat("- Maximum Sample Size:", x$sim_power$n$Maximum, "patients")
+  cat("- Maximum Sample Size:", x$sim_power$n$Maximum, "patients\n\n")
 
   out <- data.frame(
     Statistic = c("Type-I Error",
@@ -433,9 +472,10 @@ print.bcts_results <- function(x, ...) {
   cat("------------------------------------------------------------\n")
 
   if (x$estimation$method == "mcmc") {
-    # Provide critical z-value for mcmc method
-    cat("The null hypothesis should be rejected when the critical z-value exceeds ",
-        sprintf("%.3f", x$result$z.crit), ".\n")
+    # Provide critical p-value and z-value for mcmc method
+    cat("The null hypothesis should be rejected when the critical p-value is below ",
+        sprintf("%.5f", x$result$critical_p_value), " or equivalently when the critical z-value exceeds ",
+        sprintf("%.3f", x$result$critical_z_value), ".\n")
     cat("This threshold accounts for interim looks and represents an increase from the single-look z-value of ",
         sprintf("%.3f", qnorm(1 - x$design$alpha)), ".\n")
   } else {
