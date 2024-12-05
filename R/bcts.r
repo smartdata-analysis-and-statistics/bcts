@@ -46,8 +46,18 @@
 #' - **sim_type1**: Results from Type-I error simulations.
 #' - **sim_power**: Results from power simulations.
 #' - **design**: Details of the trial design, including `alpha`.
-#' - **result**: A list with the calibrated \eqn{\gamma} threshold.
-#' - **gamma.table**: A data frame summarizing the calibration process.
+#' - **estimation**: A list detailing the estimation and simulation settings:
+#'     - `nsim`: Number of simulated trials.
+#'     - `method`: Method used for power estimation (`"bayes"` or `"mcmc"`).
+#'     - `num_chains`: Number of MCMC chains.
+#'     - `n.iter`: Total number of MCMC iterations.
+#'     - `n.adapt`: Number of adaptation iterations for MCMC.
+#'     - `perc_burnin`: Proportion of MCMC iterations used for burn-in.
+#' - **result**: A list with the calibrated results:
+#'     - `gamma`: Calibrated threshold for rejecting the null hypothesis.
+#'     - `z.crit`: Critical value to evaluate the null hypothesis (\eqn{z = \Phi^{-1}(\gamma)}).
+#' - **gamma.table**: A data frame summarizing the gamma calibration process,
+#'   including the tested gamma values and their corresponding Type-I error rates.
 #'
 #' @examples
 #' \dontrun{
@@ -67,12 +77,14 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                  n.iter = 5000, n.adapt = 500, perc_burnin = 0.2,
                  progress.bar = "text") {
 
-
   # Input validation
   stopifnot(is.numeric(n_dose_sel), is.numeric(n_ss_reest),
             is.numeric(n_pln), is.numeric(n_max),
             is.numeric(alpha), is.numeric(th.fut), is.numeric(th.eff),
             is.numeric(th.prom), method %in% c("bayes", "mcmc"))
+
+  # Extract treatment names
+  trt_names <- extract_treatment_names(mu = mu, sigma = sigma)
 
   if (is.null(n_ss_reest)) {
     # Calibrate gamma for a one-interim design
@@ -132,10 +144,25 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
     stop("Please provide either `n_ss_reest` or `n_dose_sel`.")
   }
 
-  out <- list(sim_type1 = opt.gamma$sim.opt, 
+  out <- list(sim_type1 = opt.gamma$sim.opt,
               sim_power = sim_power,
-              design = list(alpha = alpha),
-              result = list(gamma = opt.gamma$gamma.opt),
+              design = list(alpha = alpha,
+                            trt_ref = trt_ref,
+                            trt_active = setdiff(trt_names, trt_ref),
+                            trt_rank = trt_rank,
+                            mu = mu,
+                            sigma = sigma,
+                            th.fut = th.fut,
+                            th.eff = th.eff,
+                            th.prom = th.prom),
+              estimation = list(nsim = nsim,
+                                method = method,
+                                num_chains = num_chains,
+                                n.iter = n.iter,
+                                n.adapt = n.adapt,
+                                perc_burnin = perc_burnin),
+              result = list(gamma = opt.gamma$gamma.opt,
+                            z.crit = qnorm(opt.gamma$gamma.opt)),
               gamma.table = opt.gamma$table)
   class(out) <- "bcts_results"
 
@@ -356,14 +383,24 @@ print.bcts_results <- function(x, ...) {
 
   cat("Sample Size Calculation for an Adaptive Trial\n")
   cat("------------------------------------------------------------\n")
-  cat(paste("Target Type-I Error:", x$design$alpha*100, "%\n"))
-  cat(paste("Number of Looks:", x$sim_type1$no.looks, "\n"))
+  cat("Design Summary:\n")
+  cat("  - Target Type-I Error:", x$design$alpha, "\n")
+  cat("  - Number of Looks:", x$sim_type1$no.looks, "\n")
+
+  cat("\nPPOS Thresholds:\n")
+  cat("  - Futility:", sprintf("%.2f%%", x$design$th.fut * 100), "\n")
+  cat("  - Efficacy:", sprintf("%.2f%%", x$design$th.eff * 100), "\n")
+  cat("  - Sample Size Re-estimation:", sprintf("%.2f%%", x$design$th.prom * 100), "\n")
 
   cat("\nExpected Effect Sizes and Standard Deviations (per treatment group):\n")
-  for (treatment in union(names(x$sim_power$mu), names(x$sim_power$sigma))) {
+  for (treatment in union(x$design$trt_ref, x$design$trt_active)) {
     effect_size <- ifelse(is.null(x$sim_power$mu[[treatment]]), "N/A", x$sim_power$mu[[treatment]])
     sd <- ifelse(is.null(x$sim_power$sigma[[treatment]]), "N/A", x$sim_power$sigma[[treatment]])
-    cat("-", treatment, ": Effect Size =", effect_size, ", SD =", sd, "\n")
+
+    # Check if the treatment is the reference group
+    is_reference <- ifelse(treatment == x$design$trt_ref, " (Reference)", "")
+
+    cat("-", treatment, ": Effect Size =", effect_size, ", SD =", sd, is_reference, "\n")
   }
   cat("\nInterim Analysis Timepoints:\n")
   if (x$sim_type1$no.looks == 2) {
@@ -394,10 +431,22 @@ print.bcts_results <- function(x, ...) {
   cat("\n")
   cat("Key Decision Rule:\n")
   cat("------------------------------------------------------------\n")
-  cat("The null hypothesis should be rejected when Pr(mu_t - mu_c > 0 | Data) > ",
-             round(x$result$gamma, 5),".\n")
-  cat("This threshold accounts for interim looks and represents an increase from", (1 - x$design$alpha), "\n")
-  cat("corresponding to an alpha of", x$design$alpha*100, "% under a single-look design.\n")
+
+  if (x$estimation$method == "mcmc") {
+    # Provide critical z-value for mcmc method
+    cat("The null hypothesis should be rejected when the critical z-value exceeds ",
+        sprintf("%.3f", x$result$z.crit), ".\n")
+    cat("This threshold accounts for interim looks and represents an increase from the single-look z-value of ",
+        sprintf("%.3f", qnorm(1 - x$design$alpha)), ".\n")
+  } else {
+    # Provide gamma threshold for bayes method
+    cat("The null hypothesis should be rejected when Pr(mu_t - mu_c > 0 | Data) > ",
+        sprintf("%.5f", x$result$gamma), ".\n")
+    cat("This threshold accounts for interim looks and represents an increase from ",
+        sprintf("%.5f", 1 - x$design$alpha), ".\n")
+    cat("corresponding to an alpha of ", sprintf("%.2f%%", x$design$alpha * 100),
+        " under a single-look design.\n")
+  }
   cat("------------------------------------------------------------\n")
 
   invisible(out) # Optionally return the table for further processing
@@ -583,7 +632,7 @@ eval_superiority_mcmc <- function(data, margin = 0, gamma = 0.975, trt_ref = "Pl
   Yt <- data %>% dplyr::filter(.data$Treatment == trt_act & !is.na(.data$Y)) %>% pull("Y")
 
   test_freq <- pow_diff_means(n1 = length(Yt), n2 = length(Yc), N = N,
-                              mu1 = mean(Yt), mu2 = mean(Yc), margin = 0,
+                              mu1 = mean(Yt), mu2 = mean(Yc), margin = margin,
                               sd1 = sd(Yt), sd2  = sd(Yc),
                               alpha = 1 - gamma,
                               alternative = "superiority")

@@ -79,8 +79,22 @@ An object of class \code{"bcts_results"} containing the following components:
 \item \strong{sim_type1}: Results from Type-I error simulations.
 \item \strong{sim_power}: Results from power simulations.
 \item \strong{design}: Details of the trial design, including \code{alpha}.
-\item \strong{result}: A list with the calibrated \eqn{\gamma} threshold.
-\item \strong{gamma.table}: A data frame summarizing the calibration process.
+\item \strong{estimation}: A list detailing the estimation and simulation settings:
+\itemize{
+\item \code{nsim}: Number of simulated trials.
+\item \code{method}: Method used for power estimation (\code{"bayes"} or \code{"mcmc"}).
+\item \code{num_chains}: Number of MCMC chains.
+\item \code{n.iter}: Total number of MCMC iterations.
+\item \code{n.adapt}: Number of adaptation iterations for MCMC.
+\item \code{perc_burnin}: Proportion of MCMC iterations used for burn-in.
+}
+\item \strong{result}: A list with the calibrated results:
+\itemize{
+\item \code{gamma}: Calibrated threshold for rejecting the null hypothesis.
+\item \code{z.crit}: Critical value to evaluate the null hypothesis (\eqn{z = \Phi^{-1}(\gamma)}).
+}
+\item \strong{gamma.table}: A data frame summarizing the gamma calibration process,
+including the tested gamma values and their corresponding Type-I error rates.
 }
 }
 \description{
@@ -99,13 +113,13 @@ The function begins by calibrating the \eqn{\gamma} threshold to achieve the tar
 After calibration, the Type-I error and power are assessed under the calibrated threshold.
 }
 \examples{
-## Not run:
+\dontrun{
 bcts(n_dose_sel = 60, n_ss_reest = 175, n_pln = 200, n_max = 250,
      mu = c("Placebo" = 0, "Dose 1" = 0.4, "Dose 2" = 0.5),
      sigma = c("Placebo" = 1, "Dose 1" = 1, "Dose 2" = 1),
      trt_ref = "Placebo", method = "mcmc", alpha = 0.01,
      th.fut = 0.15, th.eff = 0.9, th.prom = 0.5, nsim = 10000)
-## End(Not run)
+}
 
 }
 \author{
