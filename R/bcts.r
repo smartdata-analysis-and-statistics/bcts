@@ -154,15 +154,6 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
   # Derive summary metrics
   z_crit <- qnorm(opt.gamma$gamma.opt)
 
-  # Extract key results
-  type1 <- power(opt.gamma$sim.opt, adjust_for_futility = FALSE)
-  power_without_fut <- power(adjust_for_futility = FALSE)
-  power_with_fut <- power(sim_power, adjust_for_futility = TRUE)
-  fut.trig <- mc_error_proportion(x = sum(sim_power$simresults$fut.trig),
-                                  n = nrow(sim_power$simresults))
-  inc.ss <- mc_error_proportion(x = sum(sim_power$simresults$inc.ss),
-                                n = nrow(sim_power$simresults))
-
   out <- list(sim_type1 = opt.gamma$sim.opt,
               sim_power = sim_power,
               design = list(no.looks = no.looks,
@@ -182,9 +173,9 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
                                 n.adapt = n.adapt,
                                 perc_burnin = perc_burnin),
               result = list(
-                type1_error = type1,                           # Clearly indicates Type-I error
-                power_no_futility = power_without_fut,         # Describes power without futility adjustment
-                power_with_futility = power_with_fut,          # Describes power with futility adjustment
+                type1_error = power(opt.gamma$sim.opt, adjust_for_futility = FALSE),                           # Clearly indicates Type-I error
+                power_no_futility = power(sim_power, adjust_for_futility = FALSE),         # Describes power without futility adjustment
+                power_with_futility = power(sim_power, adjust_for_futility = TRUE),          # Describes power with futility adjustment
                 gamma_threshold = opt.gamma$gamma.opt,         # Indicates the gamma threshold
                 critical_z_value = z_crit,                     # Clearly indicates the critical z-value
                 critical_p_value = pnorm(z_crit, lower.tail = FALSE) # Describes the critical p-value
