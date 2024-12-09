@@ -65,6 +65,7 @@ kable(out, col.names = c("Treatment", "Effect Size", "Standard Deviation"))
 # Results
 ```{r}
 #| echo: FALSE
+#| label: tab-summary-results
 
 conf.level <- 0.95
 
@@ -72,15 +73,15 @@ conf.level <- 0.95
 n_fin_qt <- stats::quantile(params$sim$sim_power$simresults$n.final, c((1 - conf.level)/2, 1 - (1 - conf.level)/2))
 
 type1 <- power(x = params$sim$sim_type1, adjust_for_futility = FALSE, level = conf.level)
-power_without_fut <- power(x = params$sim_power, adjust_for_futility = FALSE, level = conf.level)
-power_with_fut <- power(x = params$sim_power, adjust_for_futility = TRUE, level = conf.level)
+power_without_fut <- power(x = params$sim$sim_power, adjust_for_futility = FALSE, level = conf.level)
+power_with_fut <- power(x = params$sim$sim_power, adjust_for_futility = TRUE, level = conf.level)
 
-  fut.trig <- mc_error_proportion(x = sum(params$sim_power$simresults$fut.trig),
-                                  n = nrow(params$sim_power$simresults),
+  fut.trig <- mc_error_proportion(x = sum(params$sim$sim_power$simresults$fut.trig),
+                                  n = nrow(params$sim$sim_power$simresults),
                                   level = conf.level)
 
-  inc.ss <- mc_error_proportion(x = sum(params$sim_power$simresults$inc.ss),
-                                n = nrow(params$sim_power$simresults),
+  inc.ss <- mc_error_proportion(x = sum(params$sim$sim_power$simresults$inc.ss),
+                                n = nrow(params$sim$sim_power$simresults),
                                 level = conf.level)
   
 out <- data.frame(
@@ -101,16 +102,6 @@ kable(out, format = "latex", booktabs = TRUE, col.names = c("Statistic", "Estima
 ```
 
 The null hypothesis should be rejected when the critical p-value is below `r sprintf("%.5f", sim$result$critical_p_value)` or equivalently when the critical z-value exceeds `r sprintf("%.3f", sim$result$critical_z_value)`. This threshold accounts for interim looks and represents an increase from the single-look z-value of `r sprintf("%.3f", qnorm(1 - sim$design$alpha))`
-
-```{r}
-#| echo: false
-plot(params$sim$sim_power)
-```
-
-```{r}
-#| echo: false
-plotInterimPPoS(params$sim)
-```
 
 ```{r}
 #| echo: false
