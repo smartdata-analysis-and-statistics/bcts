@@ -383,9 +383,6 @@ print.bcts_results <- function(x, ...) {
 
   conf.level <- 0.95
 
-  ## Check environment
-  markdown <- !interactive()
-
   ## Get quantiles of final sample size
   n_fin_qt <- stats::quantile(x$sim_power$simresults$n.final, c((1 - conf.level)/2, 1 - (1 - conf.level)/2))
 
@@ -403,24 +400,19 @@ print.bcts_results <- function(x, ...) {
                                 level = conf.level)
 
   ## Header
-  if (markdown) {
-    cat("## Sample Size Calculation for an Adaptive Trial\n\n")
-    cat("### Design Summary\n")
-  } else {
-    cat("Sample Size Calculation for an Adaptive Trial\n\n")
-    cat("Design Summary:\n")
-  }
+  cat("Sample Size Calculation for an Adaptive Trial\n\n")
+  cat("Design Summary:\n")
   cat("- Target Type-I Error:", sprintf("%.2f%%", x$design$alpha * 100), "\n")
   cat("- Number of Looks:", x$design$no.looks, "\n\n")
 
   ## PPOS Thresholds
-  if (markdown) cat("## PPOS Thresholds\n") else cat("PPOS Thresholds:\n")
+  cat("PPOS Thresholds:\n")
   cat("- Futility:", sprintf("%.2f%%", x$design$th.fut * 100), "\n")
   cat("- Efficacy:", sprintf("%.2f%%", x$design$th.eff * 100), "\n")
   cat("- Sample Size Re-estimation:", sprintf("%.2f%%", x$design$th.prom * 100), "\n\n")
 
   ## Effect Sizes and SD
-  if (markdown) cat("## Expected Effect Sizes and Standard Deviations\n") else cat("Expected Effect Sizes and Standard Deviations:\n")
+  cat("Expected Effect Sizes and Standard Deviations:\n")
   effect_sizes <- union(x$design$trt_ref, x$design$trt_active) %>%
     map_chr(function(treatment) {
       effect_size <- ifelse(is.null(x$sim_power$mu[[treatment]]), "N/A", x$sim_power$mu[[treatment]])
@@ -431,7 +423,7 @@ print.bcts_results <- function(x, ...) {
   cat(paste(effect_sizes, collapse = "\n"), "\n\n")
 
   ## Sample Size Details
-  if (markdown) cat("## Sample Size Details\n") else cat("Sample Size Details:\n")
+  cat("Sample Size Details:\n")
   if (x$design$no.looks == 2) {
     cat("- Interim 1:", x$sim_power$n$Int1, "patients with outcome data\n")
     cat("- Interim 2:", x$sim_power$n$Int2, "patients with outcome data\n")
@@ -464,19 +456,19 @@ print.bcts_results <- function(x, ...) {
 
   if (x$estimation$method == "mcmc") {
     # Provide critical p-value and z-value for mcmc method
-    cat("The null hypothesis should be rejected when the critical p-value is below ",
-        sprintf("%.5f", x$result$critical_p_value), " or equivalently when the critical z-value exceeds ",
+    cat("The null hypothesis should be rejected when the critical p-value is below",
+        sprintf("%.5f", x$result$critical_p_value), "or equivalently when the critical z-value exceeds",
         sprintf("%.3f", x$result$critical_z_value), ".\n")
-    cat("This threshold accounts for interim looks and represents an increase from the single-look z-value of ",
+    cat("This threshold accounts for interim looks and represents an increase from the single-look z-value of",
         sprintf("%.3f", qnorm(1 - x$design$alpha)), ".\n")
   } else {
     # Provide gamma threshold for bayes method
-    cat("The null hypothesis should be rejected when Pr(mu_t - mu_c > 0 | Data) > ",
+    cat("The null hypothesis should be rejected when Pr(mu_t - mu_c > 0 | Data) >",
         sprintf("%.5f", x$result$gamma), ".\n")
-    cat("This threshold accounts for interim looks and represents an increase from ",
+    cat("This threshold accounts for interim looks and represents an increase from",
         sprintf("%.5f", 1 - x$design$alpha), ".\n")
-    cat("corresponding to an alpha of ", sprintf("%.2f%%", x$design$alpha * 100),
-        " under a single-look design.\n")
+    cat("corresponding to an alpha of", sprintf("%.2f%%", x$design$alpha * 100),
+        "under a single-look design.\n")
   }
   cat("------------------------------------------------------------\n")
 
@@ -873,4 +865,51 @@ filter_bcts_by_design <- function(bcts_list,
   return(bcts_list)
 }
 
+#' Generate a PDF Report for a bcts_results Object
+#'
+#' @param x An object of class `bcts_results` containing the results to be included in the report.
+#' @param output_file A character string specifying the output PDF file name (default: "sample_size_report.pdf").
+#' @param output_dir A character string specifying the directory where the PDF file will be saved (default: current working directory).
+#' @param template_path A character string specifying the path to a custom Quarto template file. If not provided, the default template in the package is used.
+#' @return The path to the generated PDF report.
+#' @export
+generate_report <- function(x, output_file = "sample_size_report.pdf", output_dir = getwd(), template_path = NULL) {
+  # Check if Quarto is available
+  if (!requireNamespace("quarto", quietly = TRUE)) {
+    stop("The 'quarto' package is required to generate the report. Please install it using install.packages('quarto').")
+  }
+
+  # Validate bcts_results
+  if (is.null(x)) {
+    stop("The 'x' object cannot be NULL.")
+  }
+
+  # Determine the template path
+  if (is.null(template_path)) {
+    template_path <- system.file("rmarkdown/templates/report.qmd", package = "bcts")
+    if (template_path == "") {
+      stop("Default Quarto template not found. Ensure that the 'report.qmd' file is included in your package under 'inst/rmarkdown/templates/'.")
+    }
+  } else {
+    if (!file.exists(template_path)) {
+      stop("The specified custom template file does not exist: ", template_path)
+    }
+  }
+
+  # Generate the report in the current working directory
+  temp_output_file <- output_file  # File name only
+  quarto::quarto_render(
+    input = template_path,
+    output_format = "pdf",
+    output_file = temp_output_file,
+    execute_params = list(sim = x)
+  )
+
+  # Move the file to the specified output directory
+  final_output_path <- file.path(output_dir, output_file)
+  file.rename(temp_output_file, final_output_path)
+
+  # Return the final path to the report
+  return(final_output_path)
+}
 

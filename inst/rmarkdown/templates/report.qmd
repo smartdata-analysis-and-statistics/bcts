@@ -1,0 +1,120 @@
+---
+title: "Sample Size Estimation Report"
+author: Thomas Debray
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    colorlinks: true
+    geometry: "portrait"
+params:
+  sim: NULL
+---
+
+
+```{r}
+#| echo: false
+#| warning: false
+require(ggplot2)
+require(dplyr)
+require(kableExtra)
+require(bcts)
+require(haven)
+require(purrr)
+
+sim <- params$sim
+```
+
+# Design Summary
+
+* Target Type-I Error: `r sprintf("%.2f%%", params$sim$design$alpha * 100)`
+* Number of Looks: `r params$sim$design$no.looks`
+
+# PPOS Thresholds
+
+* Futility: `r sprintf("%.2f%%", params$sim$design$th.fut * 100)`
+* Efficacy: `r sprintf("%.2f%%", params$sim$design$th.eff * 100)`
+* Sample Size Re-estimation: `r sprintf("%.2f%%", params$sim$design$th.prom * 100)`
+
+# Expected Effect Sizes and Standard Deviations
+```{r}
+#| echo: false
+out <- data.frame(trt = paste(params$sim$design$trt_ref, ("(Reference)")), 
+                  effect_size = params$sim$design$mu[params$sim$design$trt_ref], 
+                  sd = params$sim$design$sigma[params$sim$design$trt_ref])
+
+for (trta in sim$design$trt_active) {
+  out <- out %>% add_row(data.frame(trt = trta, 
+                  effect_size = params$sim$design$mu[trta], 
+                  sd = params$sim$design$sigma[trta]))
+  
+}
+rownames(out) <- NULL
+
+kable(out, col.names = c("Treatment", "Effect Size", "Standard Deviation"))
+```
+
+# Sample Size Details
+
+* Interim 1: `r params$sim$sim_power$n$Int1` patients with outcome data
+* Interim 2: `r params$sim$sim_power$n$Int2` patients with outcome data
+* Planned Sample Size: `r params$sim$sim_power$n$Planned` patients
+* Maximum Sample Size: `r params$sim$sim_power$n$Maximum` patients
+
+
+# Results
+```{r}
+#| echo: FALSE
+
+conf.level <- 0.95
+
+## Get quantiles of final sample size
+n_fin_qt <- stats::quantile(params$sim$sim_power$simresults$n.final, c((1 - conf.level)/2, 1 - (1 - conf.level)/2))
+
+type1 <- power(x = params$sim$sim_type1, adjust_for_futility = FALSE, level = conf.level)
+power_without_fut <- power(x = params$sim_power, adjust_for_futility = FALSE, level = conf.level)
+power_with_fut <- power(x = params$sim_power, adjust_for_futility = TRUE, level = conf.level)
+
+  fut.trig <- mc_error_proportion(x = sum(params$sim_power$simresults$fut.trig),
+                                  n = nrow(params$sim_power$simresults),
+                                  level = conf.level)
+
+  inc.ss <- mc_error_proportion(x = sum(params$sim_power$simresults$inc.ss),
+                                n = nrow(params$sim_power$simresults),
+                                level = conf.level)
+  
+out <- data.frame(
+    Statistic = c("Type-I Error",
+                  "Power (Without Futility Adjustment)",
+                  "Power (With Futility Adjustment)",
+                  "Pr(Futility Triggered)",
+                  "Pr(Sample Size Increased)",
+                  "Final Sample Size (Mean)"),
+    Estimate = c(type1$est, power_without_fut$est, power_with_fut$est,
+                 fut.trig$est, inc.ss$est, mean(sim$sim_power$simresults$n.final)),
+    `CI Lower` = c(type1$lower, power_without_fut$lower, power_with_fut$lower,
+                   fut.trig$lower, inc.ss$lower, n_fin_qt[1]),
+    `CI Upper` = c(type1$upper, power_without_fut$upper, power_with_fut$upper,
+                   fut.trig$upper, inc.ss$upper, n_fin_qt[2])
+  )
+kable(out, format = "latex", booktabs = TRUE, col.names = c("Statistic", "Estimate", "CI Lower", "CI Upper"))
+```
+
+The null hypothesis should be rejected when the critical p-value is below `r sprintf("%.5f", sim$result$critical_p_value)` or equivalently when the critical z-value exceeds `r sprintf("%.3f", sim$result$critical_z_value)`. This threshold accounts for interim looks and represents an increase from the single-look z-value of `r sprintf("%.3f", qnorm(1 - sim$design$alpha))`
+
+```{r}
+#| echo: false
+plot(params$sim$sim_power)
+```
+
+```{r}
+#| echo: false
+plotInterimPPoS(params$sim)
+```
+
+```{r}
+#| echo: false
+#| label: fig-final-sample-size
+#| fig.cap: "Histogram of the final sample sizes observed across simulated trials. The x-axis represents the final sample size, while the y-axis indicates the count of trials achieving each sample size. The mean final sample size is annotated at the top right corner of the plot."
+plotFinalSampleSize(params$sim)
+```
