@@ -21,8 +21,6 @@ require(kableExtra)
 require(bcts)
 require(haven)
 require(purrr)
-
-sim <- params$sim
 ```
 
 # Design Summary
@@ -98,7 +96,8 @@ out <- data.frame(
     `CI Upper` = c(type1$upper, power_without_fut$upper, power_with_fut$upper,
                    fut.trig$upper, inc.ss$upper, n_fin_qt[2])
   )
-kable(out, format = "latex", booktabs = TRUE, col.names = c("Statistic", "Estimate", "CI Lower", "CI Upper"))
+kable(out, format = "latex", booktabs = TRUE, 
+      col.names = c("Statistic", "Estimate", "CI Lower", "CI Upper"))
 ```
 
 The null hypothesis should be rejected when the critical p-value is below `r sprintf("%.5f", sim$result$critical_p_value)` or equivalently when the critical z-value exceeds `r sprintf("%.3f", sim$result$critical_z_value)`. This threshold accounts for interim looks and represents an increase from the single-look z-value of `r sprintf("%.3f", qnorm(1 - sim$design$alpha))`
