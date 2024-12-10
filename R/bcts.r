@@ -154,34 +154,41 @@ bcts <- function(n_dose_sel, n_ss_reest, n_pln, n_max, mu, sigma,
   # Derive summary metrics
   z_crit <- qnorm(opt.gamma$gamma.opt)
 
-  out <- list(sim_type1 = opt.gamma$sim.opt,
-              sim_power = sim_power,
-              design = list(no.looks = no.looks,
-                            alpha = alpha,
-                            trt_ref = trt_ref,
-                            trt_active = setdiff(trt_names, trt_ref),
-                            trt_rank = trt_rank,
-                            mu = mu,
-                            sigma = sigma,
-                            th.fut = th.fut,
-                            th.eff = th.eff,
-                            th.prom = th.prom),
-              estimation = list(nsim = nsim,
-                                method = method,
-                                num_chains = num_chains,
-                                n.iter = n.iter,
-                                n.adapt = n.adapt,
-                                perc_burnin = perc_burnin),
-              result = list(
-                type1_error = power(opt.gamma$sim.opt, adjust_for_futility = FALSE),                           # Clearly indicates Type-I error
-                power_no_futility = power(sim_power, adjust_for_futility = FALSE),         # Describes power without futility adjustment
-                power_with_futility = power(sim_power, adjust_for_futility = TRUE),          # Describes power with futility adjustment
-                gamma_threshold = opt.gamma$gamma.opt,         # Indicates the gamma threshold
-                critical_z_value = z_crit,                     # Clearly indicates the critical z-value
-                critical_p_value = pnorm(z_crit, lower.tail = FALSE) # Describes the critical p-value
-              ),
-              gamma.table = opt.gamma$table)
-  class(out) <- "bcts_results"
+  # Create an instance of bcts_results
+  out <- bcts_results(
+    sim_type1 = opt.gamma$sim.opt,
+    sim_power = sim_power,
+    design = list(
+      no.looks = no.looks,
+      alpha = alpha,
+      trt_ref = trt_ref,
+      trt_active = setdiff(trt_names, trt_ref),
+      trt_rank = trt_rank,
+      mu = mu,
+      sigma = sigma,
+      th.fut = th.fut,
+      th.eff = th.eff,
+      th.prom = th.prom
+    ),
+    estimation = list(
+      nsim = nsim,
+      method = method,
+      num_chains = num_chains,
+      n.iter = n.iter,
+      n.adapt = n.adapt,
+      perc_burnin = perc_burnin
+    ),
+    result = list(
+      type1_error = power(opt.gamma$sim.opt, adjust_for_futility = FALSE),
+      power_no_futility = power(sim_power, adjust_for_futility = FALSE),
+      power_with_futility = power(sim_power, adjust_for_futility = TRUE),
+      gamma_threshold = opt.gamma$gamma.opt,
+      critical_z_value = z_crit,
+      critical_p_value = pnorm(z_crit, lower.tail = FALSE)
+    ),
+    gamma_table = opt.gamma$table
+  )
+
 
   return(out)
 }
@@ -865,51 +872,28 @@ filter_bcts_by_design <- function(bcts_list,
   return(bcts_list)
 }
 
-#' Generate a PDF Report for a bcts_results Object
-#'
-#' @param x An object of class `bcts_results` containing the results to be included in the report.
-#' @param output_file A character string specifying the output PDF file name (default: "sample_size_report.pdf").
-#' @param output_dir A character string specifying the directory where the PDF file will be saved (default: current working directory).
-#' @param template_path A character string specifying the path to a custom Quarto template file. If not provided, the default template in the package is used.
-#' @return The path to the generated PDF report.
-#' @export
-generate_report <- function(x, output_file = "sample_size_report.pdf", output_dir = getwd(), template_path = NULL) {
-  # Check if Quarto is available
-  if (!requireNamespace("quarto", quietly = TRUE)) {
-    stop("The 'quarto' package is required to generate the report. Please install it using install.packages('quarto').")
+
+# Constructor for bcts_results class
+bcts_results <- function(sim_type1, sim_power, design, estimation, result, gamma_table) {
+  # Ensure input validation, if needed
+  if (!is.list(sim_type1) || !is.list(sim_power)) {
+    stop("'sim_type1' and 'sim_power' must be lists.")
   }
 
-  # Validate bcts_results
-  if (is.null(x)) {
-    stop("The 'x' object cannot be NULL.")
-  }
-
-  # Determine the template path
-  if (is.null(template_path)) {
-    template_path <- system.file("rmarkdown/templates/report.qmd", package = "bcts")
-    if (template_path == "") {
-      stop("Default Quarto template not found. Ensure that the 'report.qmd' file is included in your package under 'inst/rmarkdown/templates/'.")
-    }
-  } else {
-    if (!file.exists(template_path)) {
-      stop("The specified custom template file does not exist: ", template_path)
-    }
-  }
-
-  # Generate the report in the current working directory
-  temp_output_file <- output_file  # File name only
-  quarto::quarto_render(
-    input = template_path,
-    output_format = "pdf",
-    output_file = temp_output_file,
-    execute_params = list(sim = x)
+  # Create the object structure
+  out <- list(
+    sim_type1 = sim_type1,
+    sim_power = sim_power,
+    design = design,
+    estimation = estimation,
+    result = result,
+    gamma_table = gamma_table
   )
 
-  # Move the file to the specified output directory
-  final_output_path <- file.path(output_dir, output_file)
-  file.rename(temp_output_file, final_output_path)
+  # Assign the custom class
+  class(out) <- "bcts_results"
 
-  # Return the final path to the report
-  return(final_output_path)
+  return(out)
 }
+
 
