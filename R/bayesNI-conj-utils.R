@@ -9,6 +9,7 @@
   identical(x, y)
 }
 
+
 # Build (alpha,beta) prior for one arm under flat or power prior
 # prior_kind: "flat" or "power"
 # args list: list(a_base = 1, b_base = 1, y0, n0, a0)

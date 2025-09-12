@@ -61,8 +61,8 @@ posterior_shapes_conj <- function(y_c, n_c, y_t, n_t,
 #'   - `y_c`, `y_t`: simulated successes
 #' - `shapes`: list of Beta shapes `a_c,b_c,a_t,b_t` used for the posteriors
 #'
-#' @seealso [bayesNI_power_betaBinom_conj()], [bayesNI_type1_betaBinom_conj()],
-#'   [bayesNI_calibrate_betaBinom_conj()]
+#' @seealso [bcts_power_betaBinom_conj()], [bcts_type1_betaBinom_conj()],
+#'   [bcts_calibrate_betaBinom_conj()]
 #'
 #' @examples
 #' # \donttest{

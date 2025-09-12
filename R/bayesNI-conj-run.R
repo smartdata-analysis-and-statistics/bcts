@@ -23,18 +23,18 @@
 #' @param verbose Logical. Print iteration messages during calibration.
 #'
 #' @return An object of class `"bayesNI"` with components:
-#' - `calibration`: list from [bayesNI_calibrate_betaBinom_conj()]
+#' - `calibration`: list from [bcts_calibrate_betaBinom_conj()]
 #' - `power`: estimated Bayesian power at calibrated `gamma`
 #' - `settings`: list of all input parameters (echoed)
 #'
-#' @seealso [bayesNI_calibrate_betaBinom_conj()],
-#'   [bayesNI_power_betaBinom_conj()],
-#'   [bayesNI_type1_betaBinom_conj()]
+#' @seealso [bcts_calibrate_betaBinom_conj()],
+#'   [bcts_power_betaBinom_conj()],
+#'   [bcts_type1_betaBinom_conj()]
 #' @family conjugate-NI
 #'
 #' @examples
 #' \donttest{
-#' res <- bayesNI_run_betaBinom_conj(
+#' res <- bcts_run_betaBinom_conj(
 #'   alpha = 0.10, p_c = .85, p_t = .85,
 #'   n_c = 29, n_t = 29, NI_margin = -0.20,
 #'   prior = "flat", B_cal = 1000, B_power = 500
@@ -44,7 +44,7 @@
 #' }
 #'
 #' @export
-bayesNI_run_betaBinom_conj <- function(alpha = 0.10,
+bcts_run_betaBinom_conj <- function(alpha = 0.10,
                               p_c = 0.85, p_t = 0.85,
                               n_c = 29, n_t = 29,
                               NI_margin = -0.20,
@@ -58,7 +58,7 @@ bayesNI_run_betaBinom_conj <- function(alpha = 0.10,
   prior <- match.arg(prior)
 
   # 1) Calibrate gamma using conjugate machinery
-  cal <- bayesNI_calibrate_betaBinom_conj(alpha = alpha, p_c = p_c, M = NI_margin,
+  cal <- bcts_calibrate_betaBinom_conj(alpha = alpha, p_c = p_c, M = NI_margin,
                               n_c = n_c, n_t = n_t,
                               prior = prior, prior_args = prior_args,
                               B_cal = B_cal, n_draws = n_draws,
@@ -66,7 +66,7 @@ bayesNI_run_betaBinom_conj <- function(alpha = 0.10,
                               show_progress = show_progress, verbose = verbose)
 
   # 2) Simulate Bayesian "power" at calibrated gamma
-  power <- bayesNI_power_betaBinom_conj(B = B_power, p_c = p_c, p_t = p_t,
+  power <- bcts_power_betaBinom_conj(B = B_power, p_c = p_c, p_t = p_t,
                                      n_c = n_c, n_t = n_t, M = NI_margin,
                                      threshold = cal$gamma,
                                      prior = prior, prior_args = prior_args,

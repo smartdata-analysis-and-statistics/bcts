@@ -65,6 +65,6 @@ out$summary["post_prob_NI"]
 
 }
 \seealso{
-\code{\link[=bayesNI_power_betaBinom_conj]{bayesNI_power_betaBinom_conj()}}, \code{\link[=bayesNI_type1_betaBinom_conj]{bayesNI_type1_betaBinom_conj()}},
-\code{\link[=bayesNI_calibrate_betaBinom_conj]{bayesNI_calibrate_betaBinom_conj()}}
+\code{\link[=bcts_power_betaBinom_conj]{bcts_power_betaBinom_conj()}}, \code{\link[=bcts_type1_betaBinom_conj]{bcts_type1_betaBinom_conj()}},
+\code{\link[=bcts_calibrate_betaBinom_conj]{bcts_calibrate_betaBinom_conj()}}
 }

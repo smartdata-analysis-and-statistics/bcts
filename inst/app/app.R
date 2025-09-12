@@ -23,6 +23,7 @@ prNI_draws_conj <- function(B, p_c, p_t, n_c, n_t, M,
   pr
 }
 
+
 # If your functions live in a package, uncomment:
 # library(bcts)
 
@@ -98,18 +99,14 @@ ui <- fluidPage(
 
         conditionalPanel(
           condition = "input.decision_mode == 'alpha'",
-          numericInput(
+          sliderInput(
             "alpha",
             label = HTML("Target Type-I error (\\( \\alpha \\))"),
-            value = 0.10, min = 0.001, max = 0.5, step = 0.001
+            value = 10, min = 1, max = 20, step = 1, post = "%"
           )
           ,
           helpText("γ will be calibrated so that the empirical Type-I error is ≈ α at the least-favourable null.")
         ),
-
-
-
-
       ),
 
 
@@ -123,13 +120,11 @@ ui <- fluidPage(
         #helpText(HTML("Larger values give more precise results but increase runtime.")),
       ),
 
-      hr(),
-      h4("Decision threshold & operating characteristics"),
-
       actionButton("run", "Run simulation", class = "btn-primary")
     ),
     mainPanel(
       h4("Operating characteristics at calibrated threshold"),
+      textOutput("oc_text"),
       tableOutput("oc_table"),
       plotOutput("prni_plot", height = 350),
       helpText("Vertical line = calibrated γ. Shaded bars = distribution of posterior Pr(NI) across trials.",
@@ -149,75 +144,130 @@ server <- function(input, output, session) {
     )
   })
 
-  # Build prior args list (reactive)
+  # prior args as reactive list
   prior_args <- reactive({
     if (input$prior == "flat") return(list())
-    list(a0 = input$a0/100, y_0 = input$y0, n_0 = input$n0, a_base = input$abase, b_base = input$bbase)
+    list(
+      a0 = input$a0 / 100,
+      y_0 = input$y0,
+      n_0 = input$n0,
+      a_base = input$abase,
+      b_base = input$bbase
+    )
   })
+
+
 
   sim <- eventReactive(input$run, {
     pc <- input$pc / 100
     pt <- input$pt / 100
+    M  <- input$M  / 100
 
+    # Determine gamma depending on decision_mode
+    if (input$decision_mode == "alpha") {
+      alpha_target <- input$alpha / 100
 
-    # 2) Estimate Type-I and Power at calibrated gamma (same B)
-    t1 <- bayesNI_type1_betaBinom_conj(
-      B = input$B, p_c = pc, M = input$M/100,
+      cal <- withProgress(
+        message = "Calibrating γ...",
+        detail  = "Running bisection search",
+        value   = 0,
+        {
+          # You can simulate progress: each iteration increments progress
+          # In bcts_calibrate_betaBinom_conj, add an argument like `progress_fun`
+          # that calls `incProgress(1/maxit)` at each iteration.
+
+          bcts_calibrate_betaBinom_conj(
+            alpha   = alpha_target,
+            p_c     = pc,  M = M,
+            n_c     = input$nc,
+            n_t     = input$nt,
+            prior   = input$prior,
+            prior_args = prior_args(),
+            B_cal   = input$B,
+            n_draws = input$ndraws,
+            seed    = input$seed,
+            show_progress = FALSE,   # suppress console bar
+            verbose = FALSE,
+            progress_fun = function(iter, maxit) {
+              # iter=0 sent once before loop; avoid dividing by zero
+              if (maxit > 0) incProgress(1 / maxit, detail = sprintf("Iteration %d of %d", max(1, iter), maxit))
+            }
+          )
+        }
+      )
+
+      gamma_used <- cal$gamma
+      cal_obj    <- cal
+    } else {
+      alpha_target <- NA_real_
+      gamma_used <- input$gamma / 100
+      cal_obj    <- NULL
+    }
+
+    # Type-I at LFN
+    t1 <- bcts_type1_betaBinom_conj(
+      B = input$B, p_c = pc, M = M,
       n_c = input$nc, n_t = input$nt,
-      threshold = input$gamma/100,
+      threshold = gamma_used,
       prior = input$prior, prior_args = prior_args(),
-      n_draws = input$ndraws, show_progress = FALSE
+      n_draws = input$ndraws, show_progress = TRUE
     )
 
-    pw <- bayesNI_power_betaBinom_conj(
+    # Power at assumed truth
+    pw <- bcts_power_betaBinom_conj(
       B = input$B, p_c = pc, p_t = pt,
-      n_c = input$nc, n_t = input$nt, M = input$M/100,
-      threshold =  input$gamma/100,
+      n_c = input$nc, n_t = input$nt, M = M,
+      threshold = gamma_used,
       prior = input$prior, prior_args = prior_args(),
       n_draws = input$ndraws, seed = input$seed, show_progress = FALSE
     )
 
-    # 3) Distributions of posterior Pr(NI) for plotting
-    pr_type1 <- prNI_draws_conj(
-      B = input$B, p_c = pc, p_t = pc + input$M/100, n_c = input$nc, n_t = input$nt, M = input$M/100,
-      prior = input$prior, prior_args = prior_args(),
-      n_draws = input$ndraws, seed = input$seed
+    list(
+      decision_mode = input$decision_mode,
+      alpha_target  = alpha_target,
+      gamma_used    = gamma_used,
+      cal           = cal_obj,
+      t1            = t1,   # keep full list (has CI)
+      pw            = pw    # keep full list (has CI)
     )
-    pr_power <- prNI_draws_conj(
-      B = input$B, p_c = pc, p_t = pt, n_c = input$nc, n_t = input$nt, M = input$M/100,
-      prior = input$prior, prior_args = prior_args(),
-      n_draws = input$ndraws, seed = input$seed
-    )
-
-    list(gamma =  input$gamma/100, type1 = t1$type1, power = pw,
-         pr_type1 = pr_type1, pr_power = pr_power)
   }, ignoreInit = TRUE)
 
-  output$oc_table <- renderTable({
-    s <- sim(); if (is.null(s)) return(NULL)
-    data.frame(
-      Metric   = c("Gamma", "Type-I error", "Power"),
-      Estimate = c(
-        sprintf("%.3f", s$gamma),
-        sprintf("%.3f", s$type1),
-        sprintf("%.3f", s$power)
+  # small formatters
+  fmt_pct <- function(x, d = 1) {
+    if (is.null(x) || length(x) == 0 || is.na(x)) return("—")
+    sprintf(paste0("%.", d, "f%%"), 100 * x)
+  }
+  fmt_ci <- function(lo, hi, d = 1) {
+    if (is.null(lo) || is.null(hi) || length(lo) == 0 || length(hi) == 0 ||
+        is.na(lo) || is.na(hi)) return("—")
+    sprintf(paste0("[%.", d, "f, %.", d, "f]%%"), 100 * lo, 100 * hi)
+  }
+
+  output$oc_text <- renderText({
+    s <- sim()
+    if (is.null(s)) return("Run a simulation to see results.")
+
+    # Build lines of text
+    # Build lines of text
+    lines <- c(
+      sprintf("Gamma used: %.3f", s$gamma_used),
+      sprintf(
+        "Type-I error: %.1f%%  [%.1f%%, %.1f%%]  (MC SE ≈ %.1f%%)",
+        100 * s$t1$estimate,
+        100 * s$t1$ci_lower,
+        100 * s$t1$ci_upper,
+        100 * s$t1$mc_se
       ),
-      check.names = FALSE
+      sprintf("Power: %.1f%%  [%.1f%%, %.1f%%]",
+              100 * s$pw$estimate,
+              100 * s$pw$ci_lower,
+              100 * s$pw$ci_upper)
     )
+
+    paste(lines, collapse = "\n")
   })
 
-  output$prni_plot <- renderPlot({
-    s <- sim(); if (is.null(s)) return(NULL)
-    df <- rbind(
-      data.frame(pr = s$pr_type1, panel = "LFN (Type-I)"),
-      data.frame(pr = s$pr_power, panel = "Truth (Power)")
-    )
-    ggplot(df, aes(pr)) +
-      geom_histogram(bins = 40) +
-      geom_vline(xintercept = s$cal$gamma, linetype = "dashed") +
-      facet_wrap(~panel, nrow = 1) +
-      labs(x = "Posterior Pr(NI)", y = "Count")
-  })
+
 }
 
 shinyApp(ui, server)
