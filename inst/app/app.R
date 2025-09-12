@@ -4,6 +4,25 @@
 library(shiny)
 library(ggplot2)
 
+
+# ---- small helper: get Pr(NI) across B trials for plotting ------------------
+prNI_draws_conj <- function(B, p_c, p_t, n_c, n_t, M,
+                            prior = c("flat","power"), prior_args = list(),
+                            n_draws = 2000, seed = NULL) {
+  prior <- match.arg(prior)
+  if (!is.null(seed)) set.seed(seed)
+  pr <- numeric(B)
+  for (b in seq_len(B)) {
+    res <- bayesNI_trial_betaBinom_conj(
+      p_c = p_c, p_t = p_t, n_c = n_c, n_t = n_t, M = M,
+      prior = prior, prior_args = prior_args,
+      n_draws = n_draws
+    )
+    pr[b] <- unname(res$summary["post_prob_NI"])
+  }
+  pr
+}
+
 # If your functions live in a package, uncomment:
 # library(bcts)
 
@@ -15,18 +34,24 @@ ui <- fluidPage(
 
       # --- Assumptions (truth used for simulation / planning) ---
       wellPanel(
-        h4("Assumptions"),
-        sliderInput("pc", HTML("True response rate in controls (\\(\\theta_c\\))"),
+        h4("Treatment Arm Assumptions"),
+        sliderInput("pt", HTML("True response rate  (\\(\\theta_t\\))"),
                     min = 0, max = 100, value = 85, step = 1,
                     post  = "%"),
+        numericInput("nt", HTML("Number of randomized patients  (\\(n_t \\))"), value = 29, min = 1, step = 1),
+      ),
 
-        sliderInput("pt", HTML("True response rate in treatment (\\(\\theta_t\\))"),
+      # --- Assumptions (truth used for simulation / planning) ---
+      wellPanel(
+        h4("Control Arm Assumptions"),
+        sliderInput("pc", HTML("True response rate (\\(\\theta_c\\))"),
                     min = 0, max = 100, value = 85, step = 1,
                     post  = "%"),
+        numericInput("nc", HTML("Number of randomized patients (\\(n_c \\))"),  value = 29, min = 1, step = 1),
 
         selectInput(
           "prior",
-          "Prior for control arm",
+          "Prior distribution",
           choices = c("Flat (no external evidence)" = "flat", "Power prior (with historical data)" = "power"),
           selected = "flat"
         ),
@@ -41,66 +66,88 @@ ui <- fluidPage(
         )
       ),
 
-      # --- Design (what you plan to randomize) ---
+
       wellPanel(
-        h4("Design"),
-        numericInput("nc", "Number of patients in control arm",  value = 29, min = 1, step = 1),
-        numericInput("nt", "Number of patients in treatment arm", value = 29, min = 1, step = 1),
+        h4("Decision criteria"),
         sliderInput(
           "M",
           label = HTML("Decision Margin (\\( \\Delta \\))"),
-          min   = -100,
-          max   =  100,
-          value = -20,
-          step  = 1,
-          post  = "%"
+          min   = -100, max = 100, value = -20, step = 1, post = "%"
         ),
         helpText(
-          "Set Δ < 0 to evaluate non-inferiority (treatment may be up to |Δ| worse than control).",
-          "Set Δ ≥ 0 to evaluate superiority (treatment must be at least Δ better). ",
+          "Δ < 0: non-inferiority (treatment may be up to |Δ| worse).",
+          "Δ ≥ 0: superiority (treatment must be at least Δ better).",
           "Assumes higher response rates are better (responder events)."
-        )
+        ),
+
+        # Choice: set gamma directly OR set alpha and calibrate gamma
+        radioButtons("decision_mode", "Threshold specification:",
+                     choices = c("Specify posterior probability threshold γ" = "gamma",
+                                 "Specify target Type-I error α" = "alpha"),
+                     selected = "gamma"),
+
+        conditionalPanel(
+          condition = "input.decision_mode == 'gamma'",
+          sliderInput(
+            "gamma",
+            label = HTML("Posterior probability threshold (\\( \\gamma \\))"),
+            min = 80, max = 99, value = 90, step = 1, post = "%"
+          ),
+          uiOutput("decision_rule")   # placeholder for dynamic help text
+        ),
+
+        conditionalPanel(
+          condition = "input.decision_mode == 'alpha'",
+          numericInput(
+            "alpha",
+            label = HTML("Target Type-I error (\\( \\alpha \\))"),
+            value = 0.10, min = 0.001, max = 0.5, step = 0.001
+          )
+          ,
+          helpText("γ will be calibrated so that the empirical Type-I error is ≈ α at the least-favourable null.")
+        ),
+
+
+
+
       ),
 
 
 
       # --- Posterior Evaluation ---
       wellPanel(
-        h4("Posterior evaluation"),
-        numericInput("ndraws", "Number of posterior draws", value = 2000, min = 1000, step = 100),
-        helpText(HTML("Larger values give more precise results but increase runtime.")),
-        checkboxInput("use_counts", "Use observed counts instead of simulating", value = FALSE),
-        conditionalPanel(
-          condition = "input.use_counts",
-          numericInput("yc", "Observed y_c", value = NA, min = 0, step = 1),
-          numericInput("yt", "Observed y_t", value = NA, min = 0, step = 1)
-        ),
-        numericInput("seed", "Seed (optional)", value = 123, step = 1),
+        h4("Simulation settings"),
+        numericInput("B", "Number of simulated trials (for Type-I & Power)", value = 2000, min = 100, step = 100),
+        numericInput("ndraws", "Posterior draws per trial (for Pr(NI))", value = 2000, min = 200, step = 100),
+        numericInput("seed", "Seed (optional)", value = 123, min = 1, step = 1),
+        #helpText(HTML("Larger values give more precise results but increase runtime.")),
       ),
 
       hr(),
       h4("Decision threshold & operating characteristics"),
 
-      sliderInput("gamma", "Posterior threshold γ", min = 0.80, max = 0.99, value = 0.90, step = 0.001),
-      checkboxInput("do_type1", "Estimate Type-I error at γ (LFN)", value = FALSE),
-      checkboxInput("do_power", "Estimate Power at γ", value = FALSE),
-      numericInput("B", "B (simulations for Type-I and Power)", value = 1000, min = 100, step = 100),
-
-      actionButton("go", "Run")
+      actionButton("run", "Run simulation", class = "btn-primary")
     ),
     mainPanel(
-      h4("Posterior NI result (single trial)"),
-      verbatimTextOutput("single_out"),
-      plotOutput("delta_plot", height = "320px"),
-      hr(),
-      h4("Operating characteristics at γ"),
+      h4("Operating characteristics at calibrated threshold"),
       tableOutput("oc_table"),
-      helpText("Type-I is evaluated at the least-favourable null p_t = p_c + M.")
+      plotOutput("prni_plot", height = 350),
+      helpText("Vertical line = calibrated γ. Shaded bars = distribution of posterior Pr(NI) across trials.",
+               "Left panel: least-favourable null (Type-I). Right panel: assumed truth (Power).")
     )
   )
 )
 
 server <- function(input, output, session) {
+
+  output$decision_rule <- renderUI({
+    withMathJax(  # <- ensure newly injected HTML is typeset
+      helpText(HTML(sprintf(
+        "Trial is declared successful if the posterior probability that the treatment–control difference exceeds \\( \\Delta = %d\\%% \\) is at least \\( \\gamma = %d\\%% \\).",
+        input$M, input$gamma
+      )))
+    )
+  })
 
   # Build prior args list (reactive)
   prior_args <- reactive({
@@ -108,131 +155,69 @@ server <- function(input, output, session) {
     list(a0 = input$a0/100, y_0 = input$y0, n_0 = input$n0, a_base = input$abase, b_base = input$bbase)
   })
 
-  # Run a single trial (or use observed y's) and compute posterior NI prob
-  single <- eventReactive(input$go, {
-    prior <- input$prior
-    set.seed(if (!is.na(input$seed)) input$seed else NULL)
+  sim <- eventReactive(input$run, {
+    pc <- input$pc / 100
+    pt <- input$pt / 100
 
-    if (isTRUE(input$use_counts) && !is.na(input$yc) && !is.na(input$yt)) {
-      # Use observed counts; compute posterior shapes, then Pr(NI)
-      sh <- posterior_shapes_conj(
-        y_c = as.integer(input$yc),
-        n_c = as.integer(input$nc),
-        y_t = as.integer(input$yt),
-        n_t = as.integer(input$nt),
-        prior = prior,
-        prior_args = prior_args()
-      )
-      prNI <- rbeta_diff_prob(
-        a_t = sh$a_t, b_t = sh$b_t,
-        a_c = sh$a_c, b_c = sh$b_c,
-        M = input$M/100, n_draws = input$ndraws
-      )
-      list(
-        mode = "observed",
-        y_c = as.integer(input$yc), y_t = as.integer(input$yt),
-        shapes = sh,
-        prNI = prNI
-      )
-    } else {
-      # Simulate a trial at (p_c, p_t, n_c, n_t)
-      out <- bayesNI_trial_betaBinom_conj(
-        p_c = input$pc/100, p_t = input$pt/100,
-        n_c = as.integer(input$nc), n_t = as.integer(input$nt),
-        M = input$M/100,
-        prior = prior, prior_args = prior_args(),
-        n_draws = input$ndraws,
-        seed = if (!is.na(input$seed)) input$seed else NULL
-      )
-      csum <- out$summary
-      list(
-        mode = "simulated",
-        y_c = as.integer(csum["y_c"]), y_t = as.integer(csum["y_t"]),
-        shapes = out$shapes,
-        prNI = as.numeric(csum["post_prob_NI"])
-      )
-    }
-  }, ignoreInit = TRUE)
 
-  # Print single-trial summary
-  output$single_out <- renderPrint({
-    s <- single()
-    if (is.null(s)) return(invisible(NULL))
-    cat(sprintf("Mode: %s\n", s$mode))
-    cat(sprintf("y_c = %d / n_c = %d\n", s$y_c, input$nc))
-    cat(sprintf("y_t = %d / n_t = %d\n", s$y_t, input$nt))
-    cat(sprintf("Posterior Pr(Δ > %0.3f) = %0.4f\n", input$M/100, s$prNI))
-    cat(sprintf("Decision at γ = %0.3f: %s\n",
-                input$gamma, ifelse(s$prNI >= input$gamma, "Declare NI", "Do NOT declare NI")))
-  })
+    # 2) Estimate Type-I and Power at calibrated gamma (same B)
+    t1 <- bayesNI_type1_betaBinom_conj(
+      B = input$B, p_c = pc, M = input$M/100,
+      n_c = input$nc, n_t = input$nt,
+      threshold = input$gamma/100,
+      prior = input$prior, prior_args = prior_args(),
+      n_draws = input$ndraws, show_progress = FALSE
+    )
 
-  # Plot posterior of delta = theta_t - theta_c (MC from Beta posteriors)
-  output$delta_plot <- renderPlot({
-    s <- single()
-    if (is.null(s)) return(invisible(NULL))
+    pw <- bayesNI_power_betaBinom_conj(
+      B = input$B, p_c = pc, p_t = pt,
+      n_c = input$nc, n_t = input$nt, M = input$M/100,
+      threshold =  input$gamma/100,
+      prior = input$prior, prior_args = prior_args(),
+      n_draws = input$ndraws, seed = input$seed, show_progress = FALSE
+    )
 
-    # Draw posterior samples of theta_t and theta_c
-    nd <- max(1000, input$ndraws)
-    th_t <- stats::rbeta(nd, s$shapes$a_t, s$shapes$b_t)
-    th_c <- stats::rbeta(nd, s$shapes$a_c, s$shapes$b_c)
-    delta <- th_t - th_c
+    # 3) Distributions of posterior Pr(NI) for plotting
+    pr_type1 <- prNI_draws_conj(
+      B = input$B, p_c = pc, p_t = pc + input$M/100, n_c = input$nc, n_t = input$nt, M = input$M/100,
+      prior = input$prior, prior_args = prior_args(),
+      n_draws = input$ndraws, seed = input$seed
+    )
+    pr_power <- prNI_draws_conj(
+      B = input$B, p_c = pc, p_t = pt, n_c = input$nc, n_t = input$nt, M = input$M/100,
+      prior = input$prior, prior_args = prior_args(),
+      n_draws = input$ndraws, seed = input$seed
+    )
 
-    ggplot(data.frame(delta = delta), aes(x = delta)) +
-      geom_histogram(bins = 60) +
-      geom_vline(xintercept = input$M/100, linetype = "dashed") +
-      labs(x = expression(Delta == theta[t] - theta[c]),
-           y = "Posterior density (MC histogram)",
-           title = "Posterior of risk difference Δ",
-           subtitle = sprintf("Pr(Δ > %0.3f) = %0.4f  |  γ = %0.3f",
-                              input$M/100, s$prNI, input$gamma)) +
-      theme_minimal(base_size = 12)
-  })
-
-  # Operating characteristics (optional)
-  oc <- eventReactive(input$go, {
-    res <- list()
-    if (isTRUE(input$do_type1)) {
-      res$type1 <- bayesNI_type1_betaBinom_conj(
-        B = input$B,
-        p_c = input$pc/100, M = input$M/100,
-        n_c = as.integer(input$nc), n_t = as.integer(input$nt),
-        threshold = input$gamma,
-        prior = input$prior, prior_args = prior_args(),
-        n_draws = input$ndraws,
-        show_progress = TRUE
-      )
-    }
-    if (isTRUE(input$do_power)) {
-      res$power <- bayesNI_power_betaBinom_conj(
-        B = input$B,
-        p_c = input$pc/100, p_t = input$pt/100,
-        n_c = as.integer(input$nc), n_t = as.integer(input$nt),
-        M = input$M/100,
-        threshold = input$gamma,
-        prior = input$prior, prior_args = prior_args(),
-        n_draws = input$ndraws,
-        show_progress = TRUE
-      )
-    }
-    res
+    list(gamma =  input$gamma/100, type1 = t1$type1, power = pw,
+         pr_type1 = pr_type1, pr_power = pr_power)
   }, ignoreInit = TRUE)
 
   output$oc_table <- renderTable({
-    r <- oc()
-    if (length(r) == 0) return(NULL)
-    out <- data.frame(
-      Metric = character(0),
-      Estimate = numeric(0),
-      stringsAsFactors = FALSE
+    s <- sim(); if (is.null(s)) return(NULL)
+    data.frame(
+      Metric   = c("Gamma", "Type-I error", "Power"),
+      Estimate = c(
+        sprintf("%.3f", s$gamma),
+        sprintf("%.3f", s$type1),
+        sprintf("%.3f", s$power)
+      ),
+      check.names = FALSE
     )
-    if (!is.null(r$type1)) {
-      out <- rbind(out, data.frame(Metric = "Type-I error", Estimate = r$type1$type1))
-    }
-    if (!is.null(r$power)) {
-      out <- rbind(out, data.frame(Metric = "Power", Estimate = r$power))
-    }
-    out
-  }, digits = 4)
+  })
+
+  output$prni_plot <- renderPlot({
+    s <- sim(); if (is.null(s)) return(NULL)
+    df <- rbind(
+      data.frame(pr = s$pr_type1, panel = "LFN (Type-I)"),
+      data.frame(pr = s$pr_power, panel = "Truth (Power)")
+    )
+    ggplot(df, aes(pr)) +
+      geom_histogram(bins = 40) +
+      geom_vline(xintercept = s$cal$gamma, linetype = "dashed") +
+      facet_wrap(~panel, nrow = 1) +
+      labs(x = "Posterior Pr(NI)", y = "Count")
+  })
 }
 
 shinyApp(ui, server)
