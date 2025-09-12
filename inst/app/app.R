@@ -123,12 +123,16 @@ ui <- fluidPage(
       actionButton("run", "Run simulation", class = "btn-primary")
     ),
     mainPanel(
-      h4("Operating characteristics at calibrated threshold"),
+      h4("Operating characteristics"),
       textOutput("oc_text"),
       tableOutput("oc_table"),
-      plotOutput("prni_plot", height = 350),
-      helpText("Vertical line = calibrated γ. Shaded bars = distribution of posterior Pr(NI) across trials.",
-               "Left panel: least-favourable null (Type-I). Right panel: assumed truth (Power).")
+
+      # --- Calibration plot only when decision_mode == 'alpha' ---
+      conditionalPanel(
+        condition = "input.decision_mode == 'alpha'",
+        h4("Calibration: Type-I error across γ tried"),
+        plotOutput("cal_trace_plot", height = 300)
+      )
     )
   )
 )
@@ -167,34 +171,32 @@ server <- function(input, output, session) {
     if (input$decision_mode == "alpha") {
       alpha_target <- input$alpha / 100
 
-      cal <- withProgress(
-        message = "Calibrating γ...",
-        detail  = "Running bisection search",
-        value   = 0,
-        {
-          # You can simulate progress: each iteration increments progress
-          # In bcts_calibrate_betaBinom_conj, add an argument like `progress_fun`
-          # that calls `incProgress(1/maxit)` at each iteration.
-
-          bcts_calibrate_betaBinom_conj(
-            alpha   = alpha_target,
-            p_c     = pc,  M = M,
-            n_c     = input$nc,
-            n_t     = input$nt,
-            prior   = input$prior,
-            prior_args = prior_args(),
-            B_cal   = input$B,
-            n_draws = input$ndraws,
-            seed    = input$seed,
-            show_progress = FALSE,   # suppress console bar
-            verbose = FALSE,
-            progress_fun = function(iter, maxit) {
-              # iter=0 sent once before loop; avoid dividing by zero
-              if (maxit > 0) incProgress(1 / maxit, detail = sprintf("Iteration %d of %d", max(1, iter), maxit))
-            }
-          )
-        }
-      )
+      cal <- withProgress(message = "Calibrating \u03B3…", value = 0, {
+        # use setProgress() to set absolute progress = iter/maxit
+        cal_res <- bcts_calibrate_betaBinom_conj(
+          alpha      = alpha_target,
+          p_c        = pc,
+          M          = M,
+          n_c        = input$nc,
+          n_t        = input$nt,
+          prior      = input$prior,
+          prior_args = prior_args(),
+          B_cal      = input$B,
+          n_draws    = input$ndraws,
+          seed       = input$seed,
+          show_progress = FALSE,   # suppress console progress bar
+          verbose        = FALSE,
+          progress_fun   = function(iter, maxit) {
+            if (maxit <= 0) return()
+            # iter starts at 0 (optional “starting” ping); clamp to [0,1]
+            frac <- max(0, min(1, iter / maxit))
+            setProgress(frac, detail = sprintf("Iteration %d of %d", max(1L, iter), maxit))
+          }
+        )
+        # ensure the bar finishes when the function returns early
+        setProgress(1, detail = "Done")
+        cal_res
+      })
 
       gamma_used <- cal$gamma
       cal_obj    <- cal
@@ -210,7 +212,7 @@ server <- function(input, output, session) {
       n_c = input$nc, n_t = input$nt,
       threshold = gamma_used,
       prior = input$prior, prior_args = prior_args(),
-      n_draws = input$ndraws, show_progress = TRUE
+      n_draws = input$ndraws, show_progress = FALSE
     )
 
     # Power at assumed truth
@@ -265,6 +267,32 @@ server <- function(input, output, session) {
     )
 
     paste(lines, collapse = "\n")
+  })
+
+  output$cal_trace_plot <- renderPlot({
+    s <- sim()
+    # only show when we actually calibrated
+    if (is.null(s) || is.null(s$cal)) return(NULL)
+
+    tr <- s$cal$trace            # data.frame with iter, gamma_try, type1, lo, hi, diff
+    alpha <- s$cal$alpha
+    gamma <- s$gamma_used
+
+    # basic sanity check
+    if (!all(c("gamma_try","type1") %in% names(tr))) return(NULL)
+
+    ggplot(tr, aes(x = gamma_try, y = type1)) +
+      geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.002, alpha = 0.4) +
+      geom_point(size = 2) +
+      geom_line() +
+      geom_hline(yintercept = alpha, linetype = "dotted", color = "red") +
+      geom_vline(xintercept = gamma, linetype = "dashed", color = "blue") +
+      labs(
+        x = expression(gamma),
+        y = "Estimated Type-I error",
+        subtitle = "Points are bisection iterations with 95% CI; dashed = calibrated γ, dotted = target α"
+      ) +
+      theme_minimal(base_size = 12)
   })
 
 

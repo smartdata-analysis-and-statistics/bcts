@@ -236,9 +236,34 @@ bcts_type1_betaBinom_conj <- function(B = 2000, p_c, M, n_c, n_t,
 #'
 #' @examples
 #' \donttest{
+#' # Basic calibration without progress bar
 #' cal <- bcts_calibrate_betaBinom_conj(
-#'   alpha = 0.10, p_c = 0.85, M = -0.20, n_c = 29, n_t = 29,
-#'   prior = "flat", B_cal = 1000, n_draws = 1000, seed = 11
+#'   alpha = 0.10, p_c = 0.85, M = -0.20,
+#'   n_c = 29, n_t = 29,
+#'   prior = "flat",
+#'   B_cal = 500, n_draws = 500, seed = 11
+#' )
+#' cal$gamma
+#' cal$type1
+#' cal$trace
+#'
+#' # Example with a custom progress function (console)
+#' pb_fun <- local({
+#'   pb <- utils::txtProgressBar(min = 0, max = 10, style = 3)
+#'   function(iter, maxit) {
+#'     utils::setTxtProgressBar(pb, iter)
+#'     if (iter == maxit) close(pb)
+#'   }
+#' })
+#'
+#' cal2 <- bcts_calibrate_betaBinom_conj(
+#'   alpha = 0.10, p_c = 0.85, M = -0.20,
+#'   n_c = 29, n_t = 29,
+#'   prior = "flat",
+#'   B_cal = 200, n_draws = 200, seed = 22,
+#'   maxit = 10,
+#'   show_progress = FALSE,     # disable internal bar
+#'   progress_fun = pb_fun      # external progress updater
 #' )
 #' cal$gamma
 #' cal$type1
@@ -258,7 +283,6 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
                                           verbose = TRUE, digits = 4,
                                           progress_fun = NULL) {
 
-  # --- argument checks -------------------------------------------------------
   prior <- match.arg(prior)
   if (!is.numeric(alpha) || alpha <= 0 || alpha >= 1)
     stop("`alpha` must be in (0,1).")
@@ -279,6 +303,7 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
   cache <- new.env(parent = emptyenv())
   keyfun <- function(thr) paste0("thr_", format(round(thr, digits), nsmall = digits))
 
+  # returns the FULL list from type1 (estimate, ci_lower, ci_upper, mc_se, ...)
   type1_at <- function(thr) {
     key <- keyfun(thr)
     if (exists(key, envir = cache, inherits = FALSE)) return(get(key, envir = cache))
@@ -286,7 +311,7 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
       B = B_cal, p_c = p_c, M = M, n_c = n_c, n_t = n_t,
       threshold = thr, prior = prior, prior_args = prior_args,
       n_draws = n_draws, seeds = seeds,
-      show_progress = FALSE   # <- important: no nested bars
+      show_progress = FALSE  # avoid nested/console bars
     )
     assign(key, res, envir = cache)
     res
@@ -304,24 +329,18 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
   }
 
   lo <- lower; hi <- upper
-  trace <- data.frame(iter = integer(0),
-                      gamma_try = numeric(0),
-                      type1 = numeric(0),
-                      lo = numeric(0),
-                      hi = numeric(0),
-                      diff = numeric(0))
+  trace <- data.frame(iter=integer(0), gamma_try=numeric(0), type1=numeric(0),
+                      ci_lower = numeric(0), ci_upper = numeric(0),
+                      lo=numeric(0), hi=numeric(0), diff=numeric(0))
 
-  # single, clean progress bar for the outer loop
-  if (show_progress) {
+  # console pb only if not using Shiny progress_fun
+  if (show_progress && is.null(progress_fun)) {
     pb <- utils::txtProgressBar(min = 0, max = maxit, style = 3)
     on.exit(try(close(pb), silent = TRUE), add = TRUE)
   }
 
-  # optional initial progress ping
-  if (!is.null(progress_fun)) {
-    # iter 0 indicates "starting"
-    progress_fun(0L, maxit)
-  }
+
+  if (!is.null(progress_fun)) progress_fun(0L, maxit)
 
   # bisection
   for (i in seq_len(maxit)) {
@@ -331,18 +350,19 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
     diff  <- t_mid - alpha
 
     trace <- rbind(trace, data.frame(
-      iter = i, gamma_try = mid, type1 = t_mid,
+      iter = i, gamma_try = mid,
+      type1 = r_mid$estimate,
+      ci_lower  = r_mid$ci_lower,
+      ci_upper  = r_mid$ci_upper,
       lo = lo, hi = hi, diff = diff
     ))
 
-    if (!is.null(progress_fun)) {
-      progress_fun(i, maxit)
-    }
-
+    if (!is.null(progress_fun)) progress_fun(i, maxit)
+    if (show_progress && is.null(progress_fun)) utils::setTxtProgressBar(pb, i)
     if (verbose) message(sprintf("Iter %02d: gamma=%.4f -> type1=%.4f (diff=%.4f)", i, mid, t_mid, diff))
-    if (show_progress) utils::setTxtProgressBar(pb, i)
 
     if (abs(diff) < tol) {
+      if (!is.null(progress_fun)) progress_fun(maxit, maxit)  # <- force 100%
       return(list(
         gamma   = mid,
         type1   = t_mid,
@@ -365,11 +385,18 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
     if (diff > 0) lo <- mid else hi <- mid
   }
 
+  # after the loop (maxit fallback), before returning
+  if (!is.null(progress_fun)) progress_fun(maxit, maxit)
+
   # maxit fallback
   mid  <- (lo + hi) / 2
   r_mid <- type1_at(mid)
-  t_mid <- r_mid$type1
-  trace <- rbind(trace, data.frame(iter = maxit + 1, gamma_try = mid, type1 = t_mid,
+  t_mid <- r_mid$estimate
+  trace <- rbind(trace, data.frame(iter = maxit + 1,
+                                   gamma_try = mid,
+                                   type1 = r_mid$estimate,
+                                   ci_lower  = r_mid$ci_lower,
+                                   ci_upper  = r_mid$ci_upper,
                                    lo = lo, hi = hi, diff = t_mid - alpha))
   list(
     gamma   = mid,

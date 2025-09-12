@@ -19,7 +19,7 @@ bcts_calibrate_betaBinom_conj(
   tol = 0.002,
   maxit = 30,
   seed = 11L,
-  show_progress = FALSE,
+  show_progress = TRUE,
   verbose = TRUE,
   digits = 4,
   progress_fun = NULL
@@ -88,9 +88,34 @@ over \code{[lower, upper]} with caching and common random numbers.
 }
 \examples{
 \donttest{
+# Basic calibration without progress bar
 cal <- bcts_calibrate_betaBinom_conj(
-  alpha = 0.10, p_c = 0.85, M = -0.20, n_c = 29, n_t = 29,
-  prior = "flat", B_cal = 1000, n_draws = 1000, seed = 11
+  alpha = 0.10, p_c = 0.85, M = -0.20,
+  n_c = 29, n_t = 29,
+  prior = "flat",
+  B_cal = 500, n_draws = 500, seed = 11
+)
+cal$gamma
+cal$type1
+cal$trace
+
+# Example with a custom progress function (console)
+pb_fun <- local({
+  pb <- utils::txtProgressBar(min = 0, max = 10, style = 3)
+  function(iter, maxit) {
+    utils::setTxtProgressBar(pb, iter)
+    if (iter == maxit) close(pb)
+  }
+})
+
+cal2 <- bcts_calibrate_betaBinom_conj(
+  alpha = 0.10, p_c = 0.85, M = -0.20,
+  n_c = 29, n_t = 29,
+  prior = "flat",
+  B_cal = 200, n_draws = 200, seed = 22,
+  maxit = 10,
+  show_progress = FALSE,     # disable internal bar
+  progress_fun = pb_fun      # external progress updater
 )
 cal$gamma
 cal$type1
