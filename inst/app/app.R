@@ -4,6 +4,10 @@
 library(shiny)
 library(ggplot2)
 
+# Source helpers & modules
+lapply(list.files("R", full.names = TRUE), source)
+lapply(list.files("modules", full.names = TRUE), source)
+
 
 # ---- small helper: get Pr(NI) across B trials for plotting ------------------
 prNI_draws_conj <- function(B, p_c, p_t, n_c, n_t, M,
@@ -195,91 +199,40 @@ server <- function(input, output, session) {
 
 
   sim <- eventReactive(input$run, {
+    # scale to probabilities
     pc <- input$pc / 100
     pt <- input$pt / 100
     M  <- input$M  / 100
 
-    # Determine gamma depending on decision_mode
-    if (input$decision_mode == "alpha") {
-      alpha_target <- input$alpha / 100
+    withProgress(message = "Calibrating / simulating…", value = 0, {
+      # Map bisection progress to Shiny progress bar (only used if mode == "alpha")
+      pf <- function(iter, maxit) {
+        if (maxit <= 0) return()
+        frac <- max(0, min(1, iter / maxit))
+        setProgress(frac, detail = sprintf("Calibration %d / %d", max(1L, iter), maxit))
+      }
 
-      cal <- withProgress(message = "Calibrating \u03B3…", value = 0, {
-        # use setProgress() to set absolute progress = iter/maxit
-        cal_res <- bcts_calibrate_betaBinom_conj(
-          alpha      = alpha_target,
-          p_c        = pc,
-          M          = M,
-          n_c        = input$nc,
-          n_t        = input$nt,
-          prior      = input$prior,
-          prior_args = prior_args(),
-          B_cal      = input$B,
-          n_draws    = input$ndraws,
-          seed       = input$seed,
-          show_progress = FALSE,   # suppress console progress bar
-          verbose        = FALSE,
-          progress_fun   = function(iter, maxit) {
-            if (maxit <= 0) return()
-            # iter starts at 0 (optional “starting” ping); clamp to [0,1]
-            frac <- max(0, min(1, iter / maxit))
-            setProgress(frac, detail = sprintf("Iteration %d of %d", max(1L, iter), maxit))
-          },
-          calibrate_on = input$calibrate_on
-        )
-        # ensure the bar finishes when the function returns early
-        setProgress(1, detail = "Done")
-        cal_res
-      })
+      out <- run_all_oc(
+        pt = pt, nt = input$nt,
+        pc = pc, nc = input$nc,
+        M  = M,
+        mode         = input$decision_mode,          # "gamma" or "alpha"
+        gamma        = input$gamma / 100,            # ignored if mode == "alpha"
+        alpha        = input$alpha / 100,            # used only if mode == "alpha"
+        calibrate_on = input$calibrate_on,
+        prior        = input$prior,
+        prior_args   = prior_args(),
+        B            = input$B,                      # your UI uses id "B"
+        ndraws       = input$ndraws,
+        seed         = input$seed,
+        progress_fun = pf,                           # will be used by run_all_oc()
+        verbose      = FALSE
+      )
 
-      gamma_used <- cal$gamma
-      cal_obj    <- cal
-    } else {
-      alpha_target <- NA_real_
-      gamma_used <- input$gamma / 100
-      cal_obj    <- NULL
-    }
-
-    # Type-I at LFN
-    t1 <- bcts_type1_betaBinom_conj(
-      B = input$B, p_c = pc, M = M,
-      n_c = input$nc, n_t = input$nt,
-      threshold = gamma_used,
-      prior = input$prior, prior_args = prior_args(),
-      n_draws = input$ndraws, show_progress = FALSE
-    )
-
-    # Power at assumed truth
-    pw <- bcts_power_betaBinom_conj(
-      B = input$B, p_c = pc, p_t = pt,
-      n_c = input$nc, n_t = input$nt, M = M,
-      threshold = gamma_used,
-      prior = input$prior, prior_args = prior_args(),
-      n_draws = input$ndraws, seed = input$seed, show_progress = FALSE
-    )
-
-    list(
-      decision_mode = input$decision_mode,
-      alpha_target  = alpha_target,
-      gamma_used    = gamma_used,
-      cal           = cal_obj,
-      t1            = t1,   # keep full list (has CI)
-      pw            = pw    # keep full list (has CI)
-    )
+      setProgress(1, detail = "Done")
+      out
+    })
   }, ignoreInit = TRUE)
-
-  # small formatters
-  fmt_pct <- function(x, d = 1) {
-    if (is.null(x) || length(x) == 0 || is.na(x)) return("—")
-    sprintf(paste0("%.", d, "f%%"), 100 * x)
-  }
-  fmt_ci <- function(lo, hi, d = 1) {
-    if (is.null(lo) || is.null(hi) || length(lo) == 0 || length(hi) == 0 ||
-        is.na(lo) || is.na(hi)) return("—")
-    sprintf(paste0("[%.", d, "f, %.", d, "f]%%"), 100 * lo, 100 * hi)
-  }
-
-  fmt_int  <- function(x) formatC(as.integer(x), big.mark = ",", format = "d")
-  fmt_prob <- function(x, d = 3) sprintf(paste0("%.", d, "f"), x)
 
   output$oc_text <- renderText({
     s <- sim()
@@ -359,91 +312,31 @@ server <- function(input, output, session) {
     df
   })
 
-
-  design_narrative <- function(input, s) {
-    # If no results yet
-    if (is.null(s)) {
-      return(HTML("<p>Run a simulation to generate the design summary.</p>"))
-    }
-
-    # Core knobs
-    pt <- input$pt / 100; nt <- input$nt
-    pc <- input$pc / 100; nc <- input$nc
-    M  <- input$M  / 100
-
-    # Prior block
-    prior_txt <- if (input$prior == "flat") {
-      "Flat prior on both arms (no external information)."
-    } else {
-      sprintf(
-        paste0(
-          "Power prior on the control arm using historical data: ",
-          "<em>y</em><sub>0</sub> = %d responders out of <em>n</em><sub>0</sub> = %d, ",
-          "discount factor a<sub>0</sub> = %d%%, baseline Beta(a<sub>base</sub>, b<sub>base</sub>) = Beta(%.1f, %.1f)."
-        ),
-        input$y0, input$n0, input$a0, input$abase, input$bbase
-      )
-    }
-
-    # Decision rule block
-    decision_txt <- if (input$decision_mode == "gamma") {
-      sprintf(
-        paste0(
-          "Trial declares success if ",
-          "\\(\\Pr(\\theta_t - \\theta_c > \\Delta \\mid \\text{data}) \\ge \\gamma\\). ",
-          "Here \\(\\Delta = %s\\) and \\(\\gamma = %s\\)."
-        ),
-        fmt_pct(M, 0), fmt_pct(input$gamma/100, 0)
-      )
-    } else {
-      cal_on <- switch(input$calibrate_on,
-                       point = "the Monte Carlo point estimate of the Type-I error",
-                       upper = "the upper bound of the 95% Monte Carlo confidence interval for the Type-I error",
-                       lower = "the lower bound of the 95% Monte Carlo confidence interval for the Type-I error"
-      )
-      sprintf(
-        paste0(
-          "Posterior threshold \\(\\gamma\\) is calibrated so that %s is approximately ",
-          "\\(\\alpha = %s\\) under the least-favourable null (LFN). ",
-          "LFN assumes control response \\(\\theta_c = %s\\) and margin \\(\\Delta = %s\\). ",
-          "The calibrated value is \\(\\gamma = %s\\)."
-        ),
-        cal_on,
-        fmt_pct(input$alpha/100, 0),
-        fmt_pct(pc, 0), fmt_pct(M, 0),
-        fmt_prob(s$gamma_used, 3)
-      )
-    }
-
-    # Simulation controls
-    sim_txt <- sprintf(
-      "Operating characteristics are estimated with %s simulated trials (B) and %s posterior draws per trial; seed = %s.",
-      fmt_int(input$B), fmt_int(input$ndraws), input$seed
-    )
-
-
-
-    # Put it together (MathJax-friendly)
-    HTML(paste0(
-      "<p><strong>Design:</strong> Binary endpoint with Beta–Binomial conjugate updates. ",
-      "Decision is based on the posterior probability that the risk difference exceeds the margin.</p>",
-      "<ul>",
-      "<li><strong>Margin:</strong> \\(\\Delta = ", fmt_pct(M, 0), "\\). ",
-      "Negative \\(\\Delta\\) = non-inferiority; nonnegative \\(\\Delta\\) = superiority.</li>",
-      "<li><strong>Sample sizes:</strong> treatment \\(n_t=", nt, "\\), control \\(n_c=", nc, "\\).</li>",
-      "<li><strong>Prior:</strong> ", prior_txt, "</li>",
-      "<li><strong>Decision rule:</strong> ", decision_txt, "</li>",
-      "<li><strong>Simulation setup:</strong> ", sim_txt, "</li>",
-      "</ul>"
-    ))
-  }
-
   output$design_text <- renderUI({
-    # Use sim() only after the user has run; before that we can still show the static parts
     s <- NULL
     if (!is.null(isolate(reactiveValuesToList(input)$run)) && !is.null(sim())) s <- sim()
-    withMathJax(design_narrative(input, s))
+
+    input_vals <- list(
+      prior        = input$prior,
+      y0           = input$y0,
+      n0           = input$n0,
+      a0           = input$a0,
+      abase        = input$abase,
+      bbase        = input$bbase,
+      mode         = input$decision_mode,
+      gamma        = input$gamma / 100,
+      alpha        = input$alpha / 100,
+      calibrate_on = input$calibrate_on,
+      nt           = input$nt,
+      nc           = input$nc,
+      M            = input$M / 100
+    )
+
+    withMathJax(design_narrative(input_vals, s))
   })
+
+
+
 
 
 }
