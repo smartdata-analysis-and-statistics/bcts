@@ -123,14 +123,6 @@ ui <- fluidPage(
             ),
             selected = "upper"
           ),
-          sliderInput(
-            "tol",
-            "Calibration tolerance (absolute difference)",
-            value = 0.0,
-            min = 0, max = 5,
-            step = 0.1,
-            post = "%"
-          ),
           helpText("γ will be calibrated so that the chosen Type-I metric ≈ α (within tolerance) at the least-favourable null.")
         )
       ),
@@ -140,7 +132,11 @@ ui <- fluidPage(
       # --- Posterior Evaluation ---
       wellPanel(
         h4("Simulation settings"),
-        numericInput("B", "Number of simulated trials (for Type-I & Power)", value = 2000, min = 100, step = 100),
+        numericInput("B",
+                     "Number of simulated trials (for Type-I & Power)",
+                     value = 2000, min = 100, step = 100),
+        helpText(textOutput("mc_precision_text")),
+
         numericInput("ndraws", "Posterior draws per trial (for Pr(NI))", value = 2000, min = 200, step = 100),
         numericInput("seed", "Seed (optional)", value = 123, min = 1, step = 1),
         #helpText(HTML("Larger values give more precise results but increase runtime.")),
@@ -149,6 +145,9 @@ ui <- fluidPage(
       actionButton("run", "Run simulation", class = "btn-primary")
     ),
     mainPanel(
+      h4("Design summary"),
+      htmlOutput("design_text"),
+      hr(),
       h4("Operating characteristics"),
       textOutput("oc_text"),
       tableOutput("oc_table"),
@@ -172,6 +171,13 @@ server <- function(input, output, session) {
         input$M, input$gamma
       )))
     )
+  })
+
+  # Server (change renderUI -> renderText)
+  output$mc_precision_text <- renderText({
+    B  <- as.numeric(req(input$B))
+    se <- 0.5 / sqrt(B)   # worst-case MC SE
+    sprintf("Max MC SE: %.2f%%", 100 * se)
   })
 
   # prior args as reactive list
@@ -209,7 +215,6 @@ server <- function(input, output, session) {
           prior_args = prior_args(),
           B_cal      = input$B,
           n_draws    = input$ndraws,
-          tol        = input$tol/100,
           seed       = input$seed,
           show_progress = FALSE,   # suppress console progress bar
           verbose        = FALSE,
@@ -273,6 +278,9 @@ server <- function(input, output, session) {
     sprintf(paste0("[%.", d, "f, %.", d, "f]%%"), 100 * lo, 100 * hi)
   }
 
+  fmt_int  <- function(x) formatC(as.integer(x), big.mark = ",", format = "d")
+  fmt_prob <- function(x, d = 3) sprintf(paste0("%.", d, "f"), x)
+
   output$oc_text <- renderText({
     s <- sim()
     if (is.null(s)) return("Run a simulation to see results.")
@@ -321,6 +329,120 @@ server <- function(input, output, session) {
         subtitle = "Points are bisection iterations with 95% CI; dashed = calibrated γ, dotted = target α"
       ) +
       theme_minimal(base_size = 12)
+  })
+
+  output$oc_table <- renderTable({
+    s <- sim()
+    if (is.null(s)) return(NULL)
+
+    df <- data.frame(
+      Metric = c("Gamma used", "Type-I error", "Power"),
+      Estimate = c(
+        sprintf("%.3f", s$gamma_used),
+        sprintf("%.1f%%", 100 * s$t1$estimate),
+        sprintf("%.1f%%", 100 * s$pw$estimate)
+      ),
+      `95% CI` = c(
+        "—",
+        sprintf("[%.1f%%, %.1f%%]", 100 * s$t1$ci_lower, 100 * s$t1$ci_upper),
+        sprintf("[%.1f%%, %.1f%%]", 100 * s$pw$ci_lower, 100 * s$pw$ci_upper)
+      ),
+      `MC SE` = c(
+        "—",
+        sprintf("%.1f%%", 100 * s$t1$mc_se),
+        "—"
+      ),
+      check.names = FALSE,  # <- keep column labels as written
+      stringsAsFactors = FALSE
+    )
+
+    df
+  })
+
+
+  design_narrative <- function(input, s) {
+    # If no results yet
+    if (is.null(s)) {
+      return(HTML("<p>Run a simulation to generate the design summary.</p>"))
+    }
+
+    # Core knobs
+    pt <- input$pt / 100; nt <- input$nt
+    pc <- input$pc / 100; nc <- input$nc
+    M  <- input$M  / 100
+
+    # Prior block
+    prior_txt <- if (input$prior == "flat") {
+      "Flat prior on both arms (no external information)."
+    } else {
+      sprintf(
+        paste0(
+          "Power prior on the control arm using historical data: ",
+          "<em>y</em><sub>0</sub> = %d responders out of <em>n</em><sub>0</sub> = %d, ",
+          "discount factor a<sub>0</sub> = %d%%, baseline Beta(a<sub>base</sub>, b<sub>base</sub>) = Beta(%.1f, %.1f)."
+        ),
+        input$y0, input$n0, input$a0, input$abase, input$bbase
+      )
+    }
+
+    # Decision rule block
+    decision_txt <- if (input$decision_mode == "gamma") {
+      sprintf(
+        paste0(
+          "Trial declares success if ",
+          "\\(\\Pr(\\theta_t - \\theta_c > \\Delta \\mid \\text{data}) \\ge \\gamma\\). ",
+          "Here \\(\\Delta = %s\\) and \\(\\gamma = %s\\)."
+        ),
+        fmt_pct(M, 0), fmt_pct(input$gamma/100, 0)
+      )
+    } else {
+      cal_on <- switch(input$calibrate_on,
+                       point = "the Monte Carlo point estimate of the Type-I error",
+                       upper = "the upper bound of the 95% Monte Carlo confidence interval for the Type-I error",
+                       lower = "the lower bound of the 95% Monte Carlo confidence interval for the Type-I error"
+      )
+      sprintf(
+        paste0(
+          "Posterior threshold \\(\\gamma\\) is calibrated so that %s is approximately ",
+          "\\(\\alpha = %s\\) under the least-favourable null (LFN). ",
+          "LFN assumes control response \\(\\theta_c = %s\\) and margin \\(\\Delta = %s\\). ",
+          "The calibrated value is \\(\\gamma = %s\\)."
+        ),
+        cal_on,
+        fmt_pct(input$alpha/100, 0),
+        fmt_pct(pc, 0), fmt_pct(M, 0),
+        fmt_prob(s$gamma_used, 3)
+      )
+    }
+
+    # Simulation controls
+    sim_txt <- sprintf(
+      "Operating characteristics are estimated with %s simulated trials (B) and %s posterior draws per trial; seed = %s.",
+      fmt_int(input$B), fmt_int(input$ndraws), input$seed
+    )
+
+
+
+    # Put it together (MathJax-friendly)
+    HTML(paste0(
+      "<p><strong>Design:</strong> Binary endpoint with Beta–Binomial conjugate updates. ",
+      "Decision is based on the posterior probability that the risk difference exceeds the margin.</p>",
+      "<ul>",
+      "<li><strong>Margin:</strong> \\(\\Delta = ", fmt_pct(M, 0), "\\). ",
+      "Negative \\(\\Delta\\) = non-inferiority; nonnegative \\(\\Delta\\) = superiority.</li>",
+      "<li><strong>Sample sizes:</strong> treatment \\(n_t=", nt, "\\), control \\(n_c=", nc, "\\).</li>",
+      "<li><strong>Prior:</strong> ", prior_txt, "</li>",
+      "<li><strong>Decision rule:</strong> ", decision_txt, "</li>",
+      "<li><strong>Simulation setup:</strong> ", sim_txt, "</li>",
+      "</ul>"
+    ))
+  }
+
+  output$design_text <- renderUI({
+    # Use sim() only after the user has run; before that we can still show the static parts
+    s <- NULL
+    if (!is.null(isolate(reactiveValuesToList(input)$run)) && !is.null(sim())) s <- sim()
+    withMathJax(design_narrative(input, s))
   })
 
 
