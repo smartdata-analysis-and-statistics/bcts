@@ -27,6 +27,7 @@
 #' @return A list with:
 #'   - `estimate`: estimated success probability (power)
 #'   - `ci`: matrix with lower/upper bounds for the CI
+#'   - `mc_se`: Monte Carlo standard error
 #'   - `B`: number of simulated trials
 #'   - `decisions`: logical vector of trial-level NI declarations
 #'
@@ -70,9 +71,12 @@ bcts_power_betaBinom_conj <- function(B = 1000, p_c, p_t, n_c, n_t, M,
   p <- k / B
   ci <- binom::binom.confint(x=k, n=B, conf.level = conf.level, methods = ci_method)
 
+  mc_se <- sqrt(p * (1 - p) / B)
+
   list(estimate = p,
        ci_lower = ci["lower"],
        ci_upper = ci["upper"],
+       mc_se = mc_se,
        B = B, successes = k)
 }
 

@@ -156,12 +156,16 @@ ui <- fluidPage(
       textOutput("oc_text"),
       tableOutput("oc_table"),
 
+      h4("Prior vs current control weight"),
+      plotOutput("prior_weight_plot", height = 280),
+
       # --- Calibration plot only when decision_mode == 'alpha' ---
       conditionalPanel(
         condition = "input.decision_mode == 'alpha'",
         h4("Calibration: Type-I error across γ tried"),
         plotOutput("cal_trace_plot", height = 300)
       )
+
     )
   )
 )
@@ -181,7 +185,7 @@ server <- function(input, output, session) {
   output$mc_precision_text <- renderText({
     B  <- as.numeric(req(input$B))
     se <- 0.5 / sqrt(B)   # worst-case MC SE
-    sprintf("Max MC SE: %.2f%%", 100 * se)
+    sprintf("Max Monte Carlo SE (worst-case): %.2f%%", 100 * se)
   })
 
   # prior args as reactive list
@@ -234,30 +238,15 @@ server <- function(input, output, session) {
     })
   }, ignoreInit = TRUE)
 
+  # results module consumes sim_res()
+
   output$oc_text <- renderText({
-    s <- sim()
-    if (is.null(s)) return("Run a simulation to see results.")
-
-    # Build lines of text
-    # Build lines of text
-    lines <- c(
-      sprintf("Gamma used: %.3f", s$gamma_used),
-      sprintf(
-        "Type-I error: %.1f%%  [%.1f%%, %.1f%%]  (MC SE ≈ %.1f%%)",
-        100 * s$t1$estimate,
-        100 * s$t1$ci_lower,
-        100 * s$t1$ci_upper,
-        100 * s$t1$mc_se
-      ),
-      sprintf("Power: %.1f%%  [%.1f%%, %.1f%%]",
-              100 * s$pw$estimate,
-              100 * s$pw$ci_lower,
-              100 * s$pw$ci_upper)
-    )
-
-    paste(lines, collapse = "\n")
+    if (input$decision_mode == "alpha") {
+      "Simulation results showing the calibrated posterior threshold (γ) and corresponding Type-I error at the least-favourable null, as well as the power at the assumed truth."
+    } else {
+      "Simulation results showing the specified posterior threshold (γ), with Type-I error at the least-favourable null and power at the assumed truth."
+    }
   })
-
   output$cal_trace_plot <- renderPlot({
     s <- sim()
     # only show when we actually calibrated
@@ -303,7 +292,7 @@ server <- function(input, output, session) {
       `MC SE` = c(
         "—",
         sprintf("%.1f%%", 100 * s$t1$mc_se),
-        "—"
+        sprintf("%.1f%%", 100 * s$pw$mc_se)
       ),
       check.names = FALSE,  # <- keep column labels as written
       stringsAsFactors = FALSE
@@ -333,6 +322,28 @@ server <- function(input, output, session) {
     )
 
     withMathJax(design_narrative(input_vals, s))
+  })
+
+  output$prior_weight_plot <- renderPlot({
+    # Build a minimal object the plot method understands
+    fit_like <- structure(
+      list(
+        settings = list(
+          prior = input$prior,                # "flat" or "power"
+          n_c   = input$nc,
+          prior_args = list(
+            a_base = input$abase %||% 1,
+            b_base = input$bbase %||% 1,
+            a0     = (if (input$prior == "power") input$a0/100 else 0),
+            n_0    = (if (input$prior == "power") input$n0 else 0),
+            y_0    = (if (input$prior == "power") input$y0 else NULL)
+          )
+        )
+      ),
+      class = "bayesNI"
+    )
+
+    plot_prior_weight(fit_like, orientation = "h", include_labels = TRUE)
   })
 
 

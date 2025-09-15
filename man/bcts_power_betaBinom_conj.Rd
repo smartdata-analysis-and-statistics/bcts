@@ -61,6 +61,7 @@ A list with:
 \itemize{
 \item \code{estimate}: estimated success probability (power)
 \item \code{ci}: matrix with lower/upper bounds for the CI
+\item \code{mc_se}: Monte Carlo standard error
 \item \code{B}: number of simulated trials
 \item \code{decisions}: logical vector of trial-level NI declarations
 }

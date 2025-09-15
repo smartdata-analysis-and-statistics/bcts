@@ -16,7 +16,7 @@ bcts_calibrate_betaBinom_conj(
   lower = 0.8,
   upper = 0.999,
   n_draws = 2000,
-  tol = 0.002,
+  tol = 0.001,
   maxit = 30,
   seed = 11L,
   show_progress = TRUE,
@@ -64,6 +64,15 @@ Carlo–driven default is used.}
 \item{progress_fun}{Optional function called once per bisection iteration:
 \code{progress_fun(iter, maxit)}. In Shiny, pass a wrapper that calls
 \code{incProgress(1/maxit, detail = sprintf("Iteration \%d of \%d", iter, maxit))}.}
+
+\item{calibrate_on}{Character string indicating which Type-I error quantity
+to match during calibration. One of:
+\itemize{
+\item \code{"point"} — use the Monte Carlo \strong{point estimate} of the Type-I error
+\item \code{"upper"} — use the \strong{upper bound} of the 95\% Monte Carlo CI
+\item \code{"lower"} — use the \strong{lower bound} of the 95\% Monte Carlo CI
+Default is \code{"point"}.
+}}
 }
 \value{
 A list with:
