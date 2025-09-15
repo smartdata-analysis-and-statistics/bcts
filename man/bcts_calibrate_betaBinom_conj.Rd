@@ -22,7 +22,8 @@ bcts_calibrate_betaBinom_conj(
   show_progress = TRUE,
   verbose = TRUE,
   digits = 4,
-  progress_fun = NULL
+  progress_fun = NULL,
+  calibrate_on = c("point", "upper", "lower")
 )
 }
 \arguments{

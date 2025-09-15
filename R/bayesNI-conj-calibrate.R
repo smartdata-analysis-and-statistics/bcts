@@ -221,6 +221,12 @@ bcts_type1_betaBinom_conj <- function(B = 2000, p_c, M, n_c, n_t,
 #' @param progress_fun Optional function called once per bisection iteration:
 #'   `progress_fun(iter, maxit)`. In Shiny, pass a wrapper that calls
 #'   `incProgress(1/maxit, detail = sprintf("Iteration %d of %d", iter, maxit))`.
+#' @param calibrate_on Character string indicating which Type-I error quantity
+#'   to match during calibration. One of:
+#'   * `"point"` — use the Monte Carlo **point estimate** of the Type-I error
+#'   * `"upper"` — use the **upper bound** of the 95% Monte Carlo CI
+#'   * `"lower"` — use the **lower bound** of the 95% Monte Carlo CI
+#'   Default is `"point"`.
 #'
 #' @return A list with:
 #' - `gamma`: calibrated posterior threshold
@@ -278,12 +284,15 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
                                           prior_args = list(),
                                           B_cal = 2000, lower = 0.80, upper = 0.999,
                                           n_draws = 2000,
-                                          tol = 0.002, maxit = 30,
+                                          tol = 0, maxit = 30,
                                           seed = 11L, show_progress = TRUE,
                                           verbose = TRUE, digits = 4,
-                                          progress_fun = NULL) {
+                                          progress_fun = NULL,
+                                          calibrate_on = c("point","upper","lower")) {
 
   prior <- match.arg(prior)
+  calibrate_on <- match.arg(calibrate_on)
+
   if (!is.numeric(alpha) || alpha <= 0 || alpha >= 1)
     stop("`alpha` must be in (0,1).")
   if (lower <= 0 || upper >= 1 || lower >= upper)
@@ -317,55 +326,70 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
     res
   }
 
-  # initial bracket diagnostics
-  r_lo <- type1_at(lower); t_lo <- r_lo$estimate
-  r_hi <- type1_at(upper); t_hi <- r_hi$estimate
+  #  selector for the calibration target
+  get_metric <- function(res) {
+    switch(calibrate_on,
+           point = res$estimate,
+           upper = res$ci_upper,
+           lower = res$ci_lower
+    )
+  }
+
+  # initial bracket diagnostics (must bracket alpha on the chosen metric)
+  r_lo <- type1_at(lower); m_lo <- get_metric(r_lo)
+  r_hi <- type1_at(upper); m_hi <- get_metric(r_hi)
   if (verbose) {
-    message(sprintf("Init: lower=%.3f -> type1=%.4f | upper=%.3f -> type1=%.4f | target alpha=%.4f",
-                    lower, t_lo, upper, t_hi, alpha))
+    message(sprintf(
+      "Init: lower=%.3f -> %s=%.4f | upper=%.3f -> %s=%.4f | target alpha=%.4f",
+      lower, calibrate_on, m_lo, upper, calibrate_on, m_hi, alpha))
   }
-  if (!(t_lo >= alpha && t_hi <= alpha)) {
-    warning(sprintf("Alpha not bracketed: type1(lower)=%.4f, type1(upper)=%.4f", t_lo, t_hi))
+  if (!(m_lo >= alpha && m_hi <= alpha)) {
+    warning(sprintf(
+      "Alpha not bracketed for '%s': metric(lower)=%.4f, metric(upper)=%.4f",
+      calibrate_on, m_lo, m_hi))
   }
+
 
   lo <- lower; hi <- upper
   trace <- data.frame(iter=integer(0), gamma_try=numeric(0), type1=numeric(0),
                       ci_lower = numeric(0), ci_upper = numeric(0),
-                      lo=numeric(0), hi=numeric(0), diff=numeric(0))
+                      metric=numeric(0),lo=numeric(0), hi=numeric(0), diff=numeric(0))
 
   # console pb only if not using Shiny progress_fun
   if (show_progress && is.null(progress_fun)) {
     pb <- utils::txtProgressBar(min = 0, max = maxit, style = 3)
     on.exit(try(close(pb), silent = TRUE), add = TRUE)
   }
-
-
   if (!is.null(progress_fun)) progress_fun(0L, maxit)
+
 
   # bisection
   for (i in seq_len(maxit)) {
     mid <- (lo + hi) / 2
     r_mid <- type1_at(mid)
-    t_mid <- r_mid$estimate
-    diff  <- t_mid - alpha
+    m_mid <- get_metric(r_mid)           # <- metric we calibrate on
+    diff  <- m_mid - alpha
 
     trace <- rbind(trace, data.frame(
       iter = i, gamma_try = mid,
       type1 = r_mid$estimate,
       ci_lower  = r_mid$ci_lower,
       ci_upper  = r_mid$ci_upper,
+      metric = m_mid,
       lo = lo, hi = hi, diff = diff
     ))
 
     if (!is.null(progress_fun)) progress_fun(i, maxit)
     if (show_progress && is.null(progress_fun)) utils::setTxtProgressBar(pb, i)
-    if (verbose) message(sprintf("Iter %02d: gamma=%.4f -> type1=%.4f (diff=%.4f)", i, mid, t_mid, diff))
+    if (verbose) message(sprintf(
+      "Iter %02d: gamma=%.4f -> %s=%.4f (diff=%.4f)",
+      i, mid, calibrate_on, m_mid, diff))
 
     if (abs(diff) < tol) {
       if (!is.null(progress_fun)) progress_fun(maxit, maxit)  # <- force 100%
       return(list(
         gamma   = mid,
-        type1   = t_mid,
+        type1   = r_mid$estimate,
         mc_se   = r_mid$mc_se,
         mc_ci   = r_mid$mc_ci,
         bracket = c(lower = lo, upper = hi),
@@ -378,7 +402,7 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
           p_c = p_c, M = M, n_c = n_c, n_t = n_t,
           prior = prior, prior_args = prior_args,
           n_draws = n_draws, tol = tol, maxit = maxit,
-          seed = seed
+          seed = seed, calibrate_on = calibrate_on
         )
       ))
     }
@@ -391,16 +415,16 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
   # maxit fallback
   mid  <- (lo + hi) / 2
   r_mid <- type1_at(mid)
-  t_mid <- r_mid$estimate
-  trace <- rbind(trace, data.frame(iter = maxit + 1,
-                                   gamma_try = mid,
-                                   type1 = r_mid$estimate,
-                                   ci_lower  = r_mid$ci_lower,
-                                   ci_upper  = r_mid$ci_upper,
-                                   lo = lo, hi = hi, diff = t_mid - alpha))
+  m_mid <- get_metric(r_mid)
+
+  trace <- rbind(trace, data.frame(
+    iter = maxit + 1, gamma_try = mid,
+    type1 = r_mid$estimate, ci_lower = r_mid$ci_lower, ci_upper = r_mid$ci_upper,
+    metric = m_mid, lo = lo, hi = hi, diff = m_mid - alpha))
+
   list(
     gamma   = mid,
-    type1   = t_mid,
+    type1   = r_mid$estimate,
     mc_se   = r_mid$mc_se,
     mc_ci   = r_mid$mc_ci,
     bracket = c(lower = lo, upper = hi),
@@ -413,7 +437,7 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
       p_c = p_c, M = M, n_c = n_c, n_t = n_t,
       prior = prior, prior_args = prior_args,
       n_draws = n_draws, tol = tol, maxit = maxit,
-      seed = seed
+      seed = seed, calibrate_on = calibrate_on
     )
   )
 }

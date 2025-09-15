@@ -43,27 +43,36 @@ ui <- fluidPage(
       ),
 
       # --- Assumptions (truth used for simulation / planning) ---
-      wellPanel(
-        h4("Control Arm Assumptions"),
-        sliderInput("pc", HTML("True response rate (\\(\\theta_c\\))"),
-                    min = 0, max = 100, value = 85, step = 1,
-                    post  = "%"),
-        numericInput("nc", HTML("Number of randomized patients (\\(n_c \\))"),  value = 29, min = 1, step = 1),
+      tagList(
+        # Panel 1: Control arm (always shown)
+        wellPanel(
+          h4("Control Arm Assumptions"),
+          sliderInput("pc", HTML("True response rate (\\(\\theta_c\\))"),
+                      min = 0, max = 100, value = 85, step = 1, post = "%"),
+          numericInput("nc", HTML("Number of randomized patients (\\(n_c\\))"),
+                       value = 29, min = 1, step = 1),
 
-        selectInput(
-          "prior",
-          "Prior distribution",
-          choices = c("Flat (no external evidence)" = "flat", "Power prior (with historical data)" = "power"),
-          selected = "flat"
+          selectInput(
+            "prior",
+            "Prior distribution",
+            choices = c("Flat (no external evidence)" = "flat",
+                        "Power prior (with historical data)" = "power"),
+            selected = "flat"
+          )
         ),
+
+        # Panel 2: External data config (only when prior == power)
         conditionalPanel(
           condition = "input.prior == 'power'",
-          sliderInput("a0", "Discount factor a₀ (0 = ignore history, 1 = full borrow)",
-                      min = 0, max = 100, value = 50, step = 1,post  = "%"),
-          numericInput("y0", "Historical responders (y₀)", value = 64, min = 0, step = 1),
-          numericInput("n0", "Historical sample size (n₀)", value = 75, min = 1, step = 1),
-          numericInput("abase", "Baseline Beta a_base", value = 1, min = 0.001, step = 0.1),
-          numericInput("bbase", "Baseline Beta b_base", value = 1, min = 0.001, step = 0.1)
+          wellPanel(
+            h4("External Data (Power Prior)"),
+            sliderInput("a0", "Discount factor a₀ (0 = ignore history, 1 = full borrow)",
+                        min = 0, max = 100, value = 50, step = 1, post = "%"),
+            numericInput("y0", "Historical responders (y₀)", value = 64, min = 0, step = 1),
+            numericInput("n0", "Historical sample size (n₀)", value = 75, min = 1, step = 1),
+            numericInput("abase", "Baseline Beta a_base", value = 1, min = 0.001, step = 0.1),
+            numericInput("bbase", "Baseline Beta b_base", value = 1, min = 0.001, step = 0.1)
+          )
         )
       ),
 
@@ -103,10 +112,27 @@ ui <- fluidPage(
             "alpha",
             label = HTML("Target Type-I error (\\( \\alpha \\))"),
             value = 10, min = 1, max = 20, step = 1, post = "%"
-          )
-          ,
-          helpText("γ will be calibrated so that the empirical Type-I error is ≈ α at the least-favourable null.")
-        ),
+          ),
+          selectInput(
+            "calibrate_on",
+            "Calibrate Type-I on:",
+            choices = c(
+              "Point estimate Pr(reject | H₀)"      = "point",
+              "Upper 95% MC CI (conservative)"      = "upper",
+              "Lower 95% MC CI (liberal)"           = "lower"
+            ),
+            selected = "upper"
+          ),
+          sliderInput(
+            "tol",
+            "Calibration tolerance (absolute difference)",
+            value = 0.0,
+            min = 0, max = 5,
+            step = 0.1,
+            post = "%"
+          ),
+          helpText("γ will be calibrated so that the chosen Type-I metric ≈ α (within tolerance) at the least-favourable null.")
+        )
       ),
 
 
@@ -183,6 +209,7 @@ server <- function(input, output, session) {
           prior_args = prior_args(),
           B_cal      = input$B,
           n_draws    = input$ndraws,
+          tol        = input$tol/100,
           seed       = input$seed,
           show_progress = FALSE,   # suppress console progress bar
           verbose        = FALSE,
@@ -191,7 +218,8 @@ server <- function(input, output, session) {
             # iter starts at 0 (optional “starting” ping); clamp to [0,1]
             frac <- max(0, min(1, iter / maxit))
             setProgress(frac, detail = sprintf("Iteration %d of %d", max(1L, iter), maxit))
-          }
+          },
+          calibrate_on = input$calibrate_on
         )
         # ensure the bar finishes when the function returns early
         setProgress(1, detail = "Done")
