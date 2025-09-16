@@ -155,17 +155,7 @@ ui <- fluidPage(
     mainPanel(
       mod_designsummary_ui("dsum"),
       mod_armpriors_ui("armpriors", height = 320),
-      hr(),
-      h4("Operating characteristics"),
-      textOutput("oc_text"),
-      tableOutput("oc_table"),
-
-      # --- Calibration plot only when decision_mode == 'alpha' ---
-      conditionalPanel(
-        condition = "input.decision_mode == 'alpha'",
-        h4("Calibration: Type-I error across γ tried"),
-        plotOutput("cal_trace_plot", height = 300)
-      ),
+      mod_oc_ui("oc"),
 
       # --- Sensitivity analysis ---
       # Sidebar
@@ -262,67 +252,12 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   # results module consumes sim_res()
+  mod_oc_server(
+    id = "oc",
+    sim = sim,                       # your eventReactive returning the results list
+    decision_mode = reactive(input$decision_mode)
+  )
 
-  output$oc_text <- renderText({
-    if (input$decision_mode == "alpha") {
-      "Simulation results showing the calibrated posterior threshold (γ) and corresponding Type-I error at the least-favourable null, as well as the power at the assumed truth."
-    } else {
-      "Simulation results showing the specified posterior threshold (γ), with Type-I error at the least-favourable null and power at the assumed truth."
-    }
-  })
-  output$cal_trace_plot <- renderPlot({
-    s <- sim()
-    # only show when we actually calibrated
-    if (is.null(s) || is.null(s$cal)) return(NULL)
-
-    tr <- s$cal$trace            # data.frame with iter, gamma_try, type1, lo, hi, diff
-    alpha <- s$cal$alpha
-    gamma <- s$gamma_used
-
-    # basic sanity check
-    if (!all(c("gamma_try","type1") %in% names(tr))) return(NULL)
-
-    ggplot(tr, aes(x = gamma_try, y = type1)) +
-      geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.002, alpha = 0.4) +
-      geom_point(size = 2) +
-      geom_line() +
-      geom_hline(yintercept = alpha, linetype = "dotted", color = "red") +
-      geom_vline(xintercept = gamma, linetype = "dashed", color = "blue") +
-      labs(
-        x = expression(gamma),
-        y = "Estimated Type-I error",
-        subtitle = "Points are bisection iterations with 95% CI; dashed = calibrated γ, dotted = target α"
-      ) +
-      theme_minimal(base_size = 12)
-  })
-
-  output$oc_table <- renderTable({
-    s <- sim()
-    if (is.null(s)) return(NULL)
-
-    df <- data.frame(
-      Metric = c("Gamma used", "Type-I error", "Power"),
-      Estimate = c(
-        sprintf("%.3f", s$gamma_used),
-        sprintf("%.1f%%", 100 * s$t1$estimate),
-        sprintf("%.1f%%", 100 * s$pw$estimate)
-      ),
-      `95% CI` = c(
-        "—",
-        sprintf("[%.1f%%, %.1f%%]", 100 * s$t1$ci_lower, 100 * s$t1$ci_upper),
-        sprintf("[%.1f%%, %.1f%%]", 100 * s$pw$ci_lower, 100 * s$pw$ci_upper)
-      ),
-      `MC SE` = c(
-        "—",
-        sprintf("%.1f%%", 100 * s$t1$mc_se),
-        sprintf("%.1f%%", 100 * s$pw$mc_se)
-      ),
-      check.names = FALSE,  # <- keep column labels as written
-      stringsAsFactors = FALSE
-    )
-
-    df
-  })
 
   mod_designsummary_server(
     "dsum",

@@ -2,32 +2,36 @@
 
 mod_designsummary_ui <- function(id) {
   ns <- NS(id)
-  tagList(
-    h4("Design summary"),
-    htmlOutput(ns("design_text"))
+  fluidRow(
+    column(
+      width = 12,
+      wellPanel(
+        htmlOutput(ns("design_text"))
+      )
+    )
   )
 }
 
 mod_designsummary_server <- function(
     id,
-    pt, nt,                      # reactives: treatment truth in [0,1], n_t
-    pc, nc,                      # reactives: control truth in [0,1], n_c
-    M,                           # reactive: margin (risk-diff) in [-1,1]
-    prior,                       # reactive: "flat" or "power"
-    prior_args,                  # reactive: list(a0 in [0,1], y_0, n_0, a_base, b_base)
-    decision_mode,               # reactive: "gamma" or "alpha"
-    gamma, alpha, calibrate_on,  # reactives: gamma/alpha in [0,1], calibrate_on: point/upper/lower
-    B, ndraws, seed              # reactives: simulation knobs
+    pt, nt,
+    pc, nc,
+    M,
+    prior,
+    prior_args,              # list(a0 in [0,1], y_0, n_0, a_base, b_base)
+    decision_mode,
+    gamma, alpha, calibrate_on,
+    B, ndraws, seed
 ) {
   moduleServer(id, function(input, output, session) {
 
-    # tiny helper
     `%||%` <- function(x, y) if (is.null(x)) y else x
     fmt_pct <- function(x, d = 1) sprintf(paste0("%.", d, "f%%"), 100 * x)
     fmt_int <- function(x) formatC(as.integer(x), big.mark = ",", format = "d")
+    fmt_dec <- function(x, d = 3) formatC(x, format = "f", digits = d)
+    mjax_pct <- function(x, d = 0) paste0(formatC(100 * x, format = "f", digits = d), "\\%")
 
     output$design_text <- renderUI({
-      # pull current inputs (no dependency on sim())
       vals <- list(
         pt = pt(), nt = nt(),
         pc = pc(), nc = nc(),
@@ -41,7 +45,7 @@ mod_designsummary_server <- function(
         B = B(), ndraws = ndraws(), seed = seed()
       )
 
-      # prior paragraph
+      # Narrative bits (unchanged from your version)
       prior_txt <- if (identical(vals$prior, "power")) {
         sprintf(
           paste0(
@@ -57,45 +61,77 @@ mod_designsummary_server <- function(
                 vals$pa$a_base %||% 1, vals$pa$b_base %||% 1)
       }
 
-      # decision paragraph
-      # helper: percent for MathJax
-      mjax_pct <- function(x, d = 0) {
-        # x in [0,1]; returns like "20\\%"
-        paste0(formatC(100 * x, format = "f", digits = d), "\\%")
-      }
-
-      # inside your module/server:
       decision_txt <- if (identical(vals$mode, "gamma")) {
         sprintf(
           "Success if \\(\\Pr(\\hat{\\theta}_t - \\hat{\\theta}_c > %s)\\ \\ge\\ %s\\).",
-          mjax_pct(vals$M, 0),     # e.g. "-20\\%"
-          mjax_pct(vals$gamma, 0)  # e.g. "90\\%"
+          mjax_pct(vals$M, 0), mjax_pct(vals$gamma, 0)
         )
-      }  else {
+      } else {
         target <- switch(vals$calibrate_on,
                          point = "the MC point estimate of Type-I error",
-                         upper = "the upper bound of the 95% MC CI for the Type-I error",
-                         lower = "the lower bound of the 95% MC CI for the Type-I error")
+                         upper = "the upper bound of the 95\\% MC CI for the Type-I error",
+                         lower = "the lower bound of the 95\\% MC CI for the Type-I error"
+        )
         sprintf(
-          "Posterior threshold \\(\\gamma\\) will be calibrated so that %s ≈ \\(\\alpha = %s\\) at the least-favourable null.",
-          target, fmt_pct(vals$alpha, 0)
+          "Posterior threshold \\(\\gamma\\) will be calibrated so that %s \\(\\approx\\) \\(\\alpha = %s\\) at the least-favourable null.",
+          target, mjax_pct(vals$alpha, 0)
         )
       }
 
-      # simulation knobs (informational only)
       sim_txt <- sprintf(
         "Planned Monte Carlo: %s trials (B) and %s posterior draws per trial; seed = %s.",
         fmt_int(vals$B), fmt_int(vals$ndraws), vals$seed
       )
 
-      # assemble (design only; no results)
+      # ---------------- NEW: Likelihood & Prior with configured numbers ----------------
+      n_t <- vals$nt; n_c <- vals$nc
+      lik_eq <- paste0(
+        "\\[\\begin{aligned}\n",
+        "y_t\\mid\\theta_t &\\sim \\mathrm{Binomial}(", n_t, ",\\,\\theta_t)\\\\\n",
+        "y_c\\mid\\theta_c &\\sim \\mathrm{Binomial}(", n_c, ",\\,\\theta_c)\n",
+        "\\end{aligned}\\]"
+      )
+
+      abase <- vals$pa$a_base %||% 1
+      bbase <- vals$pa$b_base %||% 1
+
+      if (identical(vals$prior, "power")) {
+        a0 <- vals$pa$a0   %||% 0
+        y0 <- vals$pa$y_0  %||% 0
+        n0 <- vals$pa$n_0  %||% 0
+        a_pow <- abase + a0 * y0
+        b_pow <- bbase + a0 * (n0 - y0)
+
+        prior_eq <- paste0(
+          "\\[\\begin{aligned}",
+
+          # Treatment prior
+          "\\theta_t &\\sim \\mathrm{Beta}(", fmt_dec(1, 3), ",\\,", fmt_dec(1, 3), ")\\\\\n",
+          # Power prior as *numeric* Beta on control (after discounting history)
+          "\\theta_c &\\sim \\mathrm{Beta}(",
+          fmt_dec(a_pow, 3), ",\\,", fmt_dec(b_pow, 3), ")",
+          "\\end{aligned}\\]"
+        )
+      } else {
+        prior_eq <- paste0(
+          "\\[\\begin{aligned}",
+          "\\theta_t &\\sim \\mathrm{Beta}(", fmt_dec(1, 3), ",\\,", fmt_dec(1, 3), ")\\\\\n",
+          "\\theta_c &\\sim \\mathrm{Beta}(", fmt_dec(abase, 3), ",\\,", fmt_dec(bbase, 3), ")",
+          "\\end{aligned}\\]"
+        )
+      }
+      # -------------------------------------------------------------------------------
+
       html <- paste0(
+        "<details open>",
+        "<summary><h4>Design summary</h4></summary>",
+        "<div style='margin-top:.6rem'>",
         "<p><strong>Design:</strong> Binary endpoint with Beta–Binomial conjugate updates.</p>",
         "<ul>",
-          "<li><b>Assumed truths</b>: ",
-          "\\(\\theta_t = ", mjax_pct(vals$pt, 0), "\\), ",
-          "\\(\\theta_c = ", mjax_pct(vals$pc, 0), "\\)",
-          "</li>",
+        "<li><b>Assumed truths</b>: ",
+        "\\(\\theta_t = ", mjax_pct(vals$pt, 0), "\\), ",
+        "\\(\\theta_c = ", mjax_pct(vals$pc, 0), "\\)",
+        "</li>",
         "<li><b>Sample sizes</b>: treatment \\(n_t = ", vals$nt,
         "\\), control \\(n_c = ", vals$nc, "\\)</li>",
         "<li><b>Margin</b>: \\(\\Delta = ", mjax_pct(vals$M, 0), "\\) ",
@@ -103,7 +139,13 @@ mod_designsummary_server <- function(
         "<li><b>Prior</b>: ", prior_txt, "</li>",
         "<li><b>Decision rule</b>: ", decision_txt, "</li>",
         "<li><b>Simulation setup</b>: ", sim_txt, "</li>",
-        "</ul>"
+        "</ul>",
+
+        # Collapsible model equations with configured numbers
+        "<h5 style='margin-top:.5rem'>Model (likelihood &amp; prior)</h5>",
+        lik_eq, prior_eq,
+        "</div>",
+        "</details>"
       )
 
       withMathJax(HTML(html))
