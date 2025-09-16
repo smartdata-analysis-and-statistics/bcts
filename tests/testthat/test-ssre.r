@@ -1,5 +1,3 @@
-require(rjags)
-
 test_that("Test sample size re-estimation at interim", {
   nsim <- 10000
   alpha <- 0.05

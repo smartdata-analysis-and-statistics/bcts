@@ -64,29 +64,56 @@ mod_designsummary_server <- function(
       }
 
       decision_txt <- if (identical(vals$mode, "gamma")) {
-        sprintf(
-          "Success if \\(\\Pr({\\theta}_t - {\\theta}_c > %s)\\ \\ge\\ %s\\).",
-          mjax_pct(vals$M, 0), mjax_pct(vals$gamma, 0)
+        paste0(
+          "<p><strong>Trial-level decision rule:</strong></p>",
+          "<ul>",
+          "<li>For a given simulated dataset, ",
+          "\\(Pr(\\theta_t - \\theta_c > ", mjax_pct(vals$M, 0), ")\\) ",
+          "is calculated from ", fmt_int(vals$ndraws), " posterior draws.</li>",
+          "<li>The null hypothesis \\(H_0\\) is rejected if this probability ",
+          "exceeds \\(\\gamma = ", mjax_pct(vals$gamma, 0), "\\).</li>",
+          "</ul>"
         )
       } else {
-        target <- switch(vals$calibrate_on,
-                         point = "the MC point estimate of Type-I error",
-                         upper = "the upper bound of the 95\\% MC CI for the Type-I error",
-                         lower = "the lower bound of the 95\\% MC CI for the Type-I error"
+        target <- switch(
+          vals$calibrate_on,
+          point = "the MC point estimate of Type-I error",
+          upper = "the upper bound of the 95\\% MC CI for the Type-I error",
+          lower = "the lower bound of the 95\\% MC CI for the Type-I error"
         )
-        sprintf(
-          "Posterior threshold \\(\\gamma\\) will be calibrated so that %s \\(\\approx\\) \\(\\alpha = %s\\) at the least-favourable null.",
-          target, mjax_pct(vals$alpha, 0)
+        paste0(
+          "<p><strong>Trial-level decision rule:</strong></p>",
+          "<ul>",
+          "<li>The posterior threshold \\(\\gamma\\) is calibrated so that ",
+          target, " \\(\\approx \\alpha = ", mjax_pct(vals$alpha, 0), "\\).</li>",
+          "<li>For a given simulated dataset, probabilities are calculated ",
+          "from ", fmt_int(vals$ndraws), " posterior draws.</li>",
+          "</ul>"
         )
       }
 
-      sim_txt <- sprintf(
-        "Planned Monte Carlo: %s trials (B) and %s posterior draws per trial; seed = %s.",
-        fmt_int(vals$B), fmt_int(vals$ndraws), vals$seed
+      sim_txt <- paste0(
+        "<p><strong>Simulation setup:</strong></p>",
+        "<ul>",
+        "<li><b>Type-I error:</b> The trial-level decision rule is repeated ",
+        fmt_int(vals$B), " times using datasets simulated under the least-favourable null.</li>",
+        "<li><b>Power:</b> The same procedure is repeated ",
+        fmt_int(vals$B), " times using datasets simulated under the assumed truths.</li>",
+        "<li>Random seed = ", vals$seed, ".</li>",
+        "</ul>"
       )
 
       # ---------------- NEW: Likelihood & Prior with configured numbers ----------------
       n_t <- vals$nt; n_c <- vals$nc
+
+      dgm_eq <- paste0(
+        "\\[\\begin{aligned}\n",
+        "y_t &\\sim \\mathrm{Binomial}(", n_t, ",\\,", fmt_dec(vals$pt, 2), ") \\\\\n",
+        "y_c &\\sim \\mathrm{Binomial}(", n_c, ",\\,", fmt_dec(vals$pc, 2), ")\n",
+        "\\end{aligned}\\]"
+      )
+
+
       lik_eq <- paste0(
         "\\[\\begin{aligned}\n",
         "y_t\\mid\\theta_t &\\sim \\mathrm{Binomial}(", n_t, ",\\,\\theta_t)\\\\\n",
@@ -127,19 +154,14 @@ mod_designsummary_server <- function(
       html <- paste0(
         "<details open><summary><h4>Design summary</h4></summary><div>",
         "<h5>Data-generating assumptions</h5>",
-        "<ul>",
-        "<li><b>Truths:</b> \\(\\theta_t = ", mjax_pct(vals$pt,0),
-        "\\), \\(\\theta_c = ", mjax_pct(vals$pc,0), "\\)</li>",
-        "<li><b>Sample sizes:</b> treatment \\(n_t = ", vals$nt,
-        "\\), control \\(n_c = ", vals$nc, "\\)</li>",
-        "</ul>",
+        dgm_eq,
 
         "<h5>Analysis model (likelihood & prior)</h5>",
         lik_eq, prior_eq,
 
-        "<h5>Decision rule</h5><p>", decision_txt, "</p>",
+        decision_txt,
 
-        "<h5>Simulation setup</h5><p>", sim_txt, "</p>",
+        sim_txt,
         "</div>",
         "</details>"
       )
