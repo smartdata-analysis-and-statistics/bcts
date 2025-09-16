@@ -14,13 +14,15 @@ mod_designsummary_ui <- function(id) {
 
 mod_designsummary_server <- function(
     id,
+    # DGM (truths & sizes)
     pt, nt,
     pc, nc,
-    M,
+    # Analysis model
     prior,
-    prior_args,              # list(a0 in [0,1], y_0, n_0, a_base, b_base)
-    decision_mode,
-    gamma, alpha, calibrate_on,
+    prior_args,              # list(a0, y_0, n_0, a_base, b_base)
+    # Decision/calibration
+    M, decision_mode, gamma, alpha, calibrate_on,
+    # Simulation controls
     B, ndraws, seed
 ) {
   moduleServer(id, function(input, output, session) {
@@ -63,7 +65,7 @@ mod_designsummary_server <- function(
 
       decision_txt <- if (identical(vals$mode, "gamma")) {
         sprintf(
-          "Success if \\(\\Pr(\\hat{\\theta}_t - \\hat{\\theta}_c > %s)\\ \\ge\\ %s\\).",
+          "Success if \\(\\Pr({\\theta}_t - {\\theta}_c > %s)\\ \\ge\\ %s\\).",
           mjax_pct(vals$M, 0), mjax_pct(vals$gamma, 0)
         )
       } else {
@@ -123,27 +125,21 @@ mod_designsummary_server <- function(
       # -------------------------------------------------------------------------------
 
       html <- paste0(
-        "<details open>",
-        "<summary><h4>Design summary</h4></summary>",
-        "<div style='margin-top:.6rem'>",
-        "<p><strong>Design:</strong> Binary endpoint with Beta–Binomial conjugate updates.</p>",
+        "<details open><summary><h4>Design summary</h4></summary><div>",
+        "<h5>Data-generating assumptions</h5>",
         "<ul>",
-        "<li><b>Assumed truths</b>: ",
-        "\\(\\theta_t = ", mjax_pct(vals$pt, 0), "\\), ",
-        "\\(\\theta_c = ", mjax_pct(vals$pc, 0), "\\)",
-        "</li>",
-        "<li><b>Sample sizes</b>: treatment \\(n_t = ", vals$nt,
+        "<li><b>Truths:</b> \\(\\theta_t = ", mjax_pct(vals$pt,0),
+        "\\), \\(\\theta_c = ", mjax_pct(vals$pc,0), "\\)</li>",
+        "<li><b>Sample sizes:</b> treatment \\(n_t = ", vals$nt,
         "\\), control \\(n_c = ", vals$nc, "\\)</li>",
-        "<li><b>Margin</b>: \\(\\Delta = ", mjax_pct(vals$M, 0), "\\) ",
-        "(Δ &lt; 0 non-inferiority; Δ ≥ 0 superiority)</li>",
-        "<li><b>Prior</b>: ", prior_txt, "</li>",
-        "<li><b>Decision rule</b>: ", decision_txt, "</li>",
-        "<li><b>Simulation setup</b>: ", sim_txt, "</li>",
         "</ul>",
 
-        # Collapsible model equations with configured numbers
-        "<h5 style='margin-top:.5rem'>Model (likelihood &amp; prior)</h5>",
+        "<h5>Analysis model (likelihood & prior)</h5>",
         lik_eq, prior_eq,
+
+        "<h5>Decision rule</h5><p>", decision_txt, "</p>",
+
+        "<h5>Simulation setup</h5><p>", sim_txt, "</p>",
         "</div>",
         "</details>"
       )

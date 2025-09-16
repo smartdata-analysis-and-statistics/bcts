@@ -1,6 +1,6 @@
-require(rjags)
-
 test_that("Test type-I error control for traditional RCT", {
+  skip_if_not_installed("rjags")
+
   nsim <- 10000
   alpha <- 0.05
 
@@ -44,6 +44,8 @@ test_that("Test type-I error control for traditional RCT", {
 })
 
 test_that("Test power for traditional RCT", {
+  skip_if_not_installed("rjags")
+
   nsim <- 10000
   alpha <- 0.05
 
