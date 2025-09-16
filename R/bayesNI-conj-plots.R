@@ -54,7 +54,7 @@ plot_prior_weight.bayesNI <- function(x, orientation = c("h","v"),
   prior_label <- if (identical(s$prior, "power")) "Power prior" else "Baseline-only prior"
   subtitle <- if (identical(s$prior, "power")) {
     sprintf("%s: a0 = %.2f, y0 = %s, n0 = %s; Beta(a,b) = Beta(%.1f, %.1f)\nESS(prior) = %.1f (baseline %.1f + borrowed %.1f); current n = %d",
-            prior_label, a0, pa$y_0 %||% "—", n0, a_base, b_base,
+            prior_label, a0, pa$y_0 %||% "-", n0, a_base, b_base,
             ess_prior, ess_baseline, ess_borrow, ess_current)
   } else {
     sprintf("%s: Beta(a,b) = Beta(%.1f, %.1f)\nESS(prior) = %.1f (baseline only); current n = %d",

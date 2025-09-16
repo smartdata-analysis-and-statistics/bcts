@@ -1,12 +1,28 @@
-# app.R
-# Minimal Shiny app for Bayesian NI (Beta–Binomial, conjugate sampling)
+# inst/app/app.R
+# Shiny entrypoint for the bcts package app
 
+# ---- Load packages that the APP needs ----
 library(shiny)
 library(ggplot2)
+library(bcts)   # <- your package is built & installed during deploy
 
-# Source helpers & modules
-lapply(list.files("R", full.names = TRUE), source)
-lapply(list.files("modules", full.names = TRUE), source)
+# ---- Locate the installed app directory (inside the bcts package) ----
+app_dir <- system.file("app", package = "bcts")
+stopifnot(nzchar(app_dir), dir.exists(app_dir))
+
+# Optional: serve static assets from inst/app/www as /www
+www_dir <- file.path(app_dir, "www")
+if (dir.exists(www_dir)) addResourcePath("www", www_dir)
+
+# Helper to source R files from inst/app/R and inst/app/modules
+source_dir <- function(path) {
+  if (dir.exists(path)) {
+    fs <- list.files(path, pattern = "\\.R$", full.names = TRUE)
+    for (f in fs) source(f, local = TRUE)
+  }
+}
+source_dir(file.path(app_dir, "R"))
+source_dir(file.path(app_dir, "modules"))
 
 
 # ---- small helper: get Pr(NI) across B trials for plotting ------------------

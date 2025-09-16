@@ -27,7 +27,8 @@ Imports:
     scales,
     ggplot2,
     knitr
-Suggests: 
+Suggests:
+    shiny,
     quarto,
     rmarkdown,
     testthat (>= 3.0.0),
