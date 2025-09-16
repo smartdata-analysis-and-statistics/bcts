@@ -1,3 +1,8 @@
+<!-- badges: start -->
+
+[![R-CMD-check](https://github.com/smartdata-analysis-and-statistics/bcts/actions/workflows/R-CMD-check.yml/badge.svg)](https://github.com/smartdata-analysis-and-statistics/bcts/actions/workflows/R-CMD-check.yml)
+<!-- badges: end -->
+
 ## Overview
 
 The **bcts** package provides functions to simulate, calibrate, and evaluate
