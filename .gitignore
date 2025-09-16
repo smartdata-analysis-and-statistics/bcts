@@ -2,3 +2,14 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# macOS Finder metadata
+.DS_Store
+inst/.DS_Store
+
+# RStudio / rsconnect deployment
+inst/app/rsconnect/
+
+# RStudio project files
+.Rproj.user
+*.Rproj
