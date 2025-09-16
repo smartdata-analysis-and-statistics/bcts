@@ -579,7 +579,6 @@ eval_superiority <- function(data,
 #' @param n.iter The number of iterations to monitor
 #' @param perc_burnin The percentage of iterations to keep for burn-in
 #'
-#' @import rjags
 #' @importFrom rlang .data
 #' @importFrom stats quantile sd qnorm var update
 #'
@@ -587,21 +586,26 @@ eval_superiority <- function(data,
 #'
 eval_superiority_bayes <- function(data, margin, gamma, trt_ref = "Placebo", num_chains, n.adapt, n.iter, perc_burnin) {
 
+  if (!requireNamespace("rjags", quietly = TRUE)) {
+    stop("Package 'rjags' (and JAGS 4.x) is required for method = 'bayes'. ",
+         "Install JAGS and then install.packages('rjags').", call. = FALSE)
+  }
+
   jags.config <- prepare_jags_ppos(dat = data, gamma = gamma, margin = margin, trt_ref = trt_ref)
 
 
   # Analyse the interim data
-  jags_model <- jags.model(file = textConnection(jags.config$model_string),
+  jags_model <- rjags::jags.model(file = textConnection(jags.config$model_string),
                            data = jags.config$jags_data,
                            n.chains = num_chains,
                            n.adapt = n.adapt,
                            quiet = TRUE)
 
   ##Burnin stage
-  update(jags_model, n.iter = ceiling(n.iter*perc_burnin), progress.bar = "none")
+  stats::update(jags_model, n.iter = ceiling(n.iter*perc_burnin), progress.bar = "none")
 
   ##Sampling after burnin
-  fit_jags_int <- coda.samples(jags_model,
+  fit_jags_int <- rjags::coda.samples(jags_model,
                                variable.names =  jags.config$variable.names,
                                n.iter = floor(n.iter*(1 - perc_burnin)),
                                progress.bar = "none")

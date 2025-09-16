@@ -166,7 +166,12 @@ ui <- fluidPage(
 
 
 
-      actionButton("run", "Run simulation", class = "btn-primary")
+      actionButton("run", "Run simulation", class = "btn-primary"),
+
+      hr(),
+      tags$small(
+        paste("bcts version:", utils::packageVersion("bcts"))
+      )
     ),
     mainPanel(
       mod_designsummary_ui("dsum"),

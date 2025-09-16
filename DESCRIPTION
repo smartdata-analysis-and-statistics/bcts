@@ -14,12 +14,11 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Depends: 
-    R (>= 3.5.0)
+    R (>= 4.1.0)
 Imports: 
     dplyr,
     purrr,
     binom,
-    rjags,
     stats,
     utils,
     rlang,
@@ -28,6 +27,7 @@ Imports:
     ggplot2,
     knitr
 Suggests:
+    rjags,
     shiny,
     quarto,
     rmarkdown,
@@ -35,5 +35,5 @@ Suggests:
     tinytest,
     kableExtra,
     tibble
-VignetteBuilder: knitr
+SystemRequirements: JAGS (>= 4.0.0)
 Config/testthat/edition: 3
