@@ -138,33 +138,41 @@ ui <- fluidPage(
         h4("Simulation settings"),
         numericInput("B",
                      "Number of simulated trials (for Type-I & Power)",
-                     value = 2000, min = 100, step = 100),
-        helpText(textOutput("mc_precision_text")),
+                     value = 2500, min = 100, step = 100),
+        helpText(textOutput("design_mc_precision_text")),
 
         numericInput("ndraws", "Posterior draws per trial (for Pr(NI))", value = 2000, min = 200, step = 100),
+        helpText(textOutput("post_mc_precision_text")),
+
         numericInput("seed", "Seed (optional)", value = 123, min = 1, step = 1),
         #helpText(HTML("Larger values give more precise results but increase runtime.")),
       ),
 
+
+
       actionButton("run", "Run simulation", class = "btn-primary")
     ),
     mainPanel(
-      h4("Design summary"),
-      htmlOutput("design_text"),
+      mod_designsummary_ui("dsum"),
+      mod_armpriors_ui("armpriors", height = 320),
       hr(),
       h4("Operating characteristics"),
       textOutput("oc_text"),
       tableOutput("oc_table"),
-
-      h4("Prior vs current control weight"),
-      plotOutput("prior_weight_plot", height = 280),
 
       # --- Calibration plot only when decision_mode == 'alpha' ---
       conditionalPanel(
         condition = "input.decision_mode == 'alpha'",
         h4("Calibration: Type-I error across γ tried"),
         plotOutput("cal_trace_plot", height = 300)
-      )
+      ),
+
+      # --- Sensitivity analysis ---
+      # Sidebar
+      mod_sensitivity_sidebar_ui("sens"),
+
+      # Main panel (where you want outputs)
+      mod_sensitivity_main_ui("sens", plot_height = 300)
 
     )
   )
@@ -182,10 +190,25 @@ server <- function(input, output, session) {
   })
 
   # Server (change renderUI -> renderText)
-  output$mc_precision_text <- renderText({
+  output$design_mc_precision_text <- renderText({
     B  <- as.numeric(req(input$B))
-    se <- 0.5 / sqrt(B)   # worst-case MC SE
-    sprintf("Max Monte Carlo SE (worst-case): %.2f%%", 100 * se)
+    se_max <- 0.5 / sqrt(B)                            # worst-case
+    if (identical(input$decision_mode, "alpha")) {
+      p <- input$alpha / 100
+      se_alpha <- sqrt(p * (1 - p) / B)                # at alpha
+      sprintf("Design MC SE: worst-case %.2f%% • at α=%d%%: %.2f%%",
+              100*se_max, input$alpha, 100*se_alpha)
+    } else {
+      sprintf("Design MC SE (worst-case): %.2f%%", 100*se_max)
+    }
+  })
+
+  output$post_mc_precision_text <- renderText({
+    D <- as.numeric(req(input$ndraws))
+    se_max <- 0.5 / sqrt(D)            # worst-case at p = 0.5
+    hw_max <- 1.96 * se_max            # ~95% half-width
+    sprintf("Posterior MC SE for Pr(NI) per trial: worst-case %.2f%% (±%.2f%%)",
+            100*se_max, 100*hw_max)
   })
 
   # prior args as reactive list
@@ -301,50 +324,60 @@ server <- function(input, output, session) {
     df
   })
 
-  output$design_text <- renderUI({
-    s <- NULL
-    if (!is.null(isolate(reactiveValuesToList(input)$run)) && !is.null(sim())) s <- sim()
+  mod_designsummary_server(
+    "dsum",
+    pt = reactive(input$pt / 100),  nt = reactive(input$nt),
+    pc = reactive(input$pc / 100),  nc = reactive(input$nc),
+    M  = reactive(input$M  / 100),
+    prior = reactive(input$prior),
+    prior_args = reactive(list(
+      a0 = if (input$prior == "power") input$a0/100 else 0,
+      y_0 = if (input$prior == "power") input$y0 else 0,
+      n_0 = if (input$prior == "power") input$n0 else 0,
+      a_base = input$abase %||% 1,
+      b_base = input$bbase %||% 1
+    )),
+    decision_mode = reactive(input$decision_mode),
+    gamma = reactive(input$gamma / 100),
+    alpha = reactive(input$alpha / 100),
+    calibrate_on = reactive(input$calibrate_on),
+    B = reactive(input$B),
+    ndraws = reactive(input$ndraws),
+    seed = reactive(input$seed)
+  )
 
-    input_vals <- list(
-      prior        = input$prior,
-      y0           = input$y0,
-      n0           = input$n0,
-      a0           = input$a0,
-      abase        = input$abase,
-      bbase        = input$bbase,
-      mode         = input$decision_mode,
-      gamma        = input$gamma / 100,
-      alpha        = input$alpha / 100,
-      calibrate_on = input$calibrate_on,
-      nt           = input$nt,
-      nc           = input$nc,
-      M            = input$M / 100
-    )
 
-    withMathJax(design_narrative(input_vals, s))
-  })
 
-  output$prior_weight_plot <- renderPlot({
-    # Build a minimal object the plot method understands
-    fit_like <- structure(
-      list(
-        settings = list(
-          prior = input$prior,                # "flat" or "power"
-          n_c   = input$nc,
-          prior_args = list(
-            a_base = input$abase %||% 1,
-            b_base = input$bbase %||% 1,
-            a0     = (if (input$prior == "power") input$a0/100 else 0),
-            n_0    = (if (input$prior == "power") input$n0 else 0),
-            y_0    = (if (input$prior == "power") input$y0 else NULL)
-          )
-        )
-      ),
-      class = "bayesNI"
-    )
+  mod_armpriors_server(
+    "armpriors",
+    p_t = reactive(input$pt / 100),
+    n_t = reactive(input$nt),
+    p_c = reactive(input$pc / 100),
+    n_c = reactive(input$nc),
+    prior = reactive(input$prior),
+    prior_args = reactive(list(
+      a_base = input$abase,
+      b_base = input$bbase,
+      a0     = if (input$prior == "power") input$a0 / 100 else 0,
+      y_0    = if (input$prior == "power") input$y0 else 0,
+      n_0    = if (input$prior == "power") input$n0 else 0
+    ))
+  )
 
-    plot_prior_weight(fit_like, orientation = "h", include_labels = TRUE)
-  })
+  mod_sensitivity_server(
+    "sens",
+    sim        = sim,                           # your eventReactive from primary analysis
+    pt         = reactive(input$pt / 100),
+    nt         = reactive(input$nt),
+    nc         = reactive(input$nc),
+    M          = reactive(input$M / 100),
+    prior      = reactive(input$prior),
+    prior_args = reactive(prior_args()),
+    B          = reactive(input$B),
+    ndraws     = reactive(input$ndraws),
+    seed       = reactive(input$seed),
+    pc_current = reactive(input$pc)            # for pre-filling the range nicely
+  )
 
 
 
