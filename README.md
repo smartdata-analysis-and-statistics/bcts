@@ -1,6 +1,6 @@
 <!-- badges: start -->
 
-[![R-CMD-check](https://github.com/smartdata-analysis-and-statistics/bcts/actions/workflows/R-CMD-check.yml/badge.svg)](https://github.com/smartdata-analysis-and-statistics/bcts/actions/workflows/R-CMD-check.yml)
+[![R-CMD-check](https://github.com/smartdata-analysis-and-statistics/bcts/actions/workflows/r.yml/badge.svg)](https://github.com/smartdata-analysis-and-statistics/bcts/actions/workflows/r.yml)
 <!-- badges: end -->
 
 ## Overview
