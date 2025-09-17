@@ -3,22 +3,13 @@
 # ---- UI: sidebar controls ----
 mod_sensitivity_sidebar_ui <- function(id) {
   ns <- NS(id)
-  wellPanel(
-    h4("Sensitivity analysis"),
-
-    # Message before primary analysis
-    conditionalPanel(
-      condition = sprintf("!output['%s']", ns("ready")),
-      helpText("Run the primary analysis first to obtain γ; then you can run a sensitivity analysis.")
-    ),
-
-    # Controls shown only after primary analysis is ready
-    conditionalPanel(
-      condition = sprintf("output['%s']", ns("ready")),
-      sliderInput(ns("pc_range"),
-                  HTML("Vary control true rate (\\(\\theta_c\\))"),
+  conditionalPanel(
+    condition = sprintf("output['%s'] === true", ns("ready")),
+    wellPanel(
+      h4("Sensitivity analysis"),
+      sliderInput(ns("pc_range"), HTML("Vary control true rate (\\(\\theta_c\\))"),
                   min = 0, max = 100, value = c(70, 95), step = 1, post = "%"),
-      numericInput(ns("grid"), "Number of grid points", value = 11, min = 3, step = 1),
+      numericInput(ns("grid"), "Number of grid points", value = 10, min = 3, step = 1, max = 15),
       checkboxGroupInput(ns("metrics"), "Compute:",
                          choices  = c("Type-I at LFN" = "type1",
                                       "Power at assumed θt" = "power"),
@@ -33,7 +24,7 @@ mod_sensitivity_main_ui <- function(id, plot_height = 300) {
   ns <- NS(id)
   tagList(
     conditionalPanel(
-      condition = sprintf("output['%s']", ns("ready")),
+      condition = sprintf("output['%s'] === true", ns("has_results")),
       h4("Sensitivity results"),
       plotOutput(ns("plot"), height = plot_height),
       tableOutput(ns("table"))
@@ -59,6 +50,7 @@ mod_sensitivity_server <- function(id,
   moduleServer(id, function(input, output, session) {
 
     `%||%` <- function(x, y) if (is.null(x)) y else x
+    .clamp <- function(x, a, b) pmin(pmax(x, a), b)
 
     normalize_cols <- function(df) {
       nm <- names(df)
@@ -69,19 +61,43 @@ mod_sensitivity_server <- function(id,
       df
     }
 
-    # Gate UI until primary analysis exists
-    output$ready <- reactive({ !is.null(sim()) })
+    # ready flag
+    ready <- reactive({ isTRUE(!is.null(sim())) })
+    output$ready <- ready
     outputOptions(output, "ready", suspendWhenHidden = FALSE)
 
-    # Prefill θc range around current slider when ready
-    observeEvent(sim(), {
-      pc <- round((pc_current() %||% 85))
-      lo <- max(0, pc - 15); hi <- min(100, pc + 15)
-      updateSliderInput(session, "pc_range", value = c(lo, hi))
-    }, ignoreInit = TRUE)
-
-    # Streaming results here
+    # single definition (keep only this one)
     sens_stream <- reactiveVal(NULL)
+
+    # results-present flag
+    output$has_results <- reactive({
+      df <- sens_stream()
+      isTRUE(!is.null(df) && nrow(df) > 0)
+    })
+    outputOptions(output, "has_results", suspendWhenHidden = FALSE)
+
+    # prefill θc range once when ready becomes TRUE (or is already TRUE at init)
+    .prefilled <- reactiveVal(FALSE)
+    observeEvent(ready(), {
+      req(ready(), !.prefilled())     # ensure sim() exists and run only once
+      .prefilled(TRUE)
+
+      s <- req(sim())
+
+      pc_assumed <- s$t1$settings$p_c %||% s$inputs$p_c %||% s$pc_assumed %||%
+        (pc_current() / 100) %||% 0.85
+      pc_assumed <- suppressWarnings(as.numeric(pc_assumed))
+      if (!is.finite(pc_assumed)) pc_assumed <- 0.85
+      pc_assumed <- .clamp(pc_assumed, 0, 1)
+
+      pc_pct <- round(100 * pc_assumed)
+      if (pc_pct == 0) { lo <- 0; hi <- 10 } else { lo <- max(0, pc_pct - 10); hi <- pc_pct }
+
+      # update after panel renders
+      session$onFlushed(function() {
+        updateSliderInput(session, "pc_range", value = c(lo, hi))
+      }, once = TRUE)
+    }, ignoreInit = FALSE)
 
     # Run sensitivity with progress and streaming updates
     observeEvent(input$run, {
