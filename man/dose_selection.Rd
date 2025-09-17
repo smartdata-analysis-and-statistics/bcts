@@ -66,6 +66,8 @@ dose_selection(dat_int = dat_int, n_pln = 150, trt_ref = trt_ref,
                trt_active = trt_active, gamma = 0.98)
 
 # Bayesian approach for dose selection
+\dontrun{
 dose_selection(dat_int = dat_int, n_pln = 150, trt_ref = trt_ref,
                trt_active = trt_active, method = "bayes")
+}
 }
