@@ -46,25 +46,28 @@ mod_oc_server <- function(id, sim, decision_mode) {
     # --- OC table --------------------------------------------------------------
     output$table <- renderTable({
       s <- sim()
+      mode <- req(decision_mode())
       req(!is.null(s))
 
+      # Determine if we should use calibration info
+      use_cal <- identical(mode, "alpha") && !is.null(s$cal)
+
+      # --- Type-I Error ---
+      type1_est  <- if (use_cal) fmt_pct(s$cal$type1["estimate"], 1) else fmt_pct(s$t1$estimate, 1)
+      type1_ci   <- if (use_cal) fmt_ci(s$cal$type1["ci_lower"], s$cal$type1["ci_upper"], 1) else fmt_ci(s$t1$ci_lower, s$t1$ci_upper, 1)
+      type1_mcse <- if (use_cal) fmt_pct(s$cal$type1["mc_se"], 1) else fmt_pct(s$t1$mc_se, 1)
+
+      # --- Power (always from s$pw) ---
+      power_est   <- fmt_pct(s$pw$estimate, 1)
+      power_ci    <- fmt_ci(s$pw$ci_lower, s$pw$ci_upper, 1)
+      power_mcse  <- fmt_pct(s$pw$mc_se, 1)
+
+      # --- Build table ---
       data.frame(
         Metric   = c("Gamma used", "Type-I error", "Power"),
-        Estimate = c(
-          sprintf("%.3f", s$gamma_used),
-          fmt_pct(s$t1$estimate, 1),
-          fmt_pct(s$pw$estimate, 1)
-        ),
-        `95% CI` = c(
-          "—",
-          fmt_ci(s$t1$ci_lower, s$t1$ci_upper, 1),
-          fmt_ci(s$pw$ci_lower, s$pw$ci_upper, 1)
-        ),
-        `MC SE`  = c(
-          "—",
-          fmt_pct(s$t1$mc_se, 1),
-          fmt_pct(s$pw$mc_se, 1)
-        ),
+        Estimate = c(sprintf("%.3f", s$gamma_used), type1_est, power_est),
+        `95% CI` = c("—", type1_ci, power_ci),
+        `MC SE`  = c("—", type1_mcse, power_mcse),
         check.names = FALSE,
         stringsAsFactors = FALSE
       )
@@ -84,23 +87,7 @@ mod_oc_server <- function(id, sim, decision_mode) {
       validate(need(!is.null(s) && !is.null(s$cal),
                     "Calibration plot available only when γ was calibrated."))
 
-      tr <- s$cal$trace
-      alpha <- s$cal$alpha
-      gamma <- s$gamma_used
-
-      ggplot2::ggplot(tr, ggplot2::aes(x = gamma_try, y = type1)) +
-        ggplot2::geom_errorbar(ggplot2::aes(ymin = ci_lower, ymax = ci_upper),
-                               width = 0.002, alpha = 0.4) +
-        ggplot2::geom_point(size = 2) +
-        ggplot2::geom_line() +
-        ggplot2::geom_hline(yintercept = alpha, linetype = "dotted", color = "red") +
-        ggplot2::geom_vline(xintercept = gamma, linetype = "dashed", color = "blue") +
-        ggplot2::labs(
-          x = expression(gamma),
-          y = "Estimated Type-I error",
-          subtitle = "Points are bisection iterations with 95% CI; dashed = calibrated γ, dotted = target α"
-        ) +
-        ggplot2::theme_minimal(base_size = 12)
+      plot(s$cal)  # Calls the S3 method plot.bcts_calibration()
     })
   })
 }

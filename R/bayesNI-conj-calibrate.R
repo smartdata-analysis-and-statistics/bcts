@@ -1,6 +1,6 @@
-#' Bayesian trial power estimation with Beta–Binomial conjugate model
+#' Bayesian trial power estimation with Beta-Binomial conjugate model
 #'
-#' Uses Monte Carlo simulation with conjugate Beta–Binomial updates
+#' Uses Monte Carlo simulation with conjugate Beta-Binomial updates
 #' (no MCMC) to estimate the probability of declaring trial success
 #' under user-specified assumptions. A trial is declared successful
 #' if \eqn{Pr(\theta_t - \theta_c > M | data) \ge \gamma}.
@@ -80,10 +80,10 @@ bcts_power_betaBinom_conj <- function(B = 1000, p_c, p_t, n_c, n_t, M,
        B = B, successes = k)
 }
 
-#' Empirical Type-I Error for Bayesian Trial (Beta–Binomial, conjugate)
+#' Empirical Type-I Error for Bayesian Trial (Beta-Binomial, conjugate)
 #'
 #' Estimates the Type-I error rate for a Bayesian non-inferiority (or
-#' superiority) test using conjugate Beta–Binomial updates. The test declares
+#' superiority) test using conjugate Beta-Binomial updates. The test declares
 #' success if the posterior probability \eqn{Pr(\theta_t - \theta_c > M | data)}
 #' exceeds a fixed threshold `threshold`. Simulation is conducted under the
 #' least-favourable null (LFN), where \eqn{p_t = p_c + M}.
@@ -197,12 +197,12 @@ bcts_type1_betaBinom_conj <- function(B = 2000, p_c, M, n_c, n_t,
   )
 }
 
-#' Calibrate the posterior threshold gamma (Beta–Binomial, conjugate)
+#' Calibrate the posterior threshold gamma (Beta-Binomial, conjugate)
 #'
 #' Finds the posterior probability cutoff \eqn{\gamma} such that the Bayesian
 #' decision rule \code{Pr(theta_t - theta_c > M | data) >= gamma} achieves a
 #' target Type-I error \code{alpha} under the least-favourable null, using
-#' conjugate Beta–Binomial updates (no MCMC). A bisection search is performed
+#' conjugate Beta-Binomial updates (no MCMC). A bisection search is performed
 #' over \code{[lower, upper]} with caching and common random numbers.
 #'
 #' @param alpha Target Type-I error in `(0,1)`, e.g., `0.10`.
@@ -216,7 +216,7 @@ bcts_type1_betaBinom_conj <- function(B = 2000, p_c, M, n_c, n_t,
 #' @param lower,upper Initial bracketing interval for `gamma`, values in `(0,1)`.
 #' @param n_draws Posterior Monte Carlo draws per trial.
 #' @param tol Absolute tolerance for `|TypeI - alpha|`. If `NULL`, a Monte
-#'   Carlo–driven default is used.
+#'   Carlo-driven default is used.
 #' @param maxit Maximum number of bisection iterations.
 #' @param seed RNG seed for generating common random numbers across thresholds.
 #' @param show_progress Show a progress bar inside Type-I evaluations.
@@ -227,9 +227,9 @@ bcts_type1_betaBinom_conj <- function(B = 2000, p_c, M, n_c, n_t,
 #'   `incProgress(1/maxit, detail = sprintf("Iteration %d of %d", iter, maxit))`.
 #' @param calibrate_on Character string indicating which Type-I error quantity
 #'   to match during calibration. One of:
-#'   * `"point"` — use the Monte Carlo **point estimate** of the Type-I error
-#'   * `"upper"` — use the **upper bound** of the 95% Monte Carlo CI
-#'   * `"lower"` — use the **lower bound** of the 95% Monte Carlo CI
+#'   * `"point"` - use the Monte Carlo **point estimate** of the Type-I error
+#'   * `"upper"` - use the **upper bound** of the 95% Monte Carlo CI
+#'   * `"lower"` - use the **lower bound** of the 95% Monte Carlo CI
 #'   Default is `"point"`.
 #'
 #' @return A list with:
@@ -410,11 +410,14 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
 
     if (stop_now) {
       if (!is.null(progress_fun)) progress_fun(maxit, maxit)  # <- force 100%
-      return(list(
+      return(structure(list(
         gamma   = mid,
-        type1   = r_mid$estimate,
-        mc_se   = r_mid$mc_se,
-        mc_ci   = r_mid$mc_ci,
+        type1   = c(
+          estimate = r_mid$estimate,
+          mc_se    = r_mid$mc_se,
+          ci_lower = r_mid$ci_lower,
+          ci_upper = r_mid$ci_upper
+        ),
         bracket = c(lower = lo, upper = hi),
         iters   = i,
         B_cal   = B_cal,
@@ -427,7 +430,7 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
           n_draws = n_draws, tol = tol, maxit = maxit,
           seed = seed, calibrate_on = calibrate_on
         )
-      ))
+      ), class = "bcts_calibration"))
     }
     if (diff > 0) lo <- mid else hi <- mid
   }
@@ -445,11 +448,14 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
     type1 = r_mid$estimate, ci_lower = r_mid$ci_lower, ci_upper = r_mid$ci_upper,
     metric = m_mid, lo = lo, hi = hi, diff = m_mid - alpha))
 
-  list(
+  structure(list(
     gamma   = mid,
-    type1   = r_mid$estimate,
-    mc_se   = r_mid$mc_se,
-    mc_ci   = r_mid$mc_ci,
+    type1   = c(
+      estimate = r_mid$estimate,
+      mc_se    = r_mid$mc_se,
+      ci_lower = r_mid$ci_lower,
+      ci_upper = r_mid$ci_upper
+    ),
     bracket = c(lower = lo, upper = hi),
     iters   = maxit,
     B_cal   = B_cal,
@@ -462,7 +468,7 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
       n_draws = n_draws, tol = tol, maxit = maxit,
       seed = seed, calibrate_on = calibrate_on
     )
-  )
+  ), class = "bcts_calibration")
 }
 
 #' Validate B_cal parameter
@@ -538,4 +544,69 @@ check_alpha_bracketing <- function(calibrate_on, alpha, lower, upper, r_lo, r_hi
   }
 
   invisible(TRUE)
+}
+
+#' Plot calibration trace for calibrated Bayesian NI threshold
+#'
+#' Visualizes the estimated Type-I error at different posterior thresholds
+#' during the calibration procedure.
+#'
+#' @param x Output from [bcts_calibrate_betaBinom_conj()]
+#' @param ... Not used.
+#'
+#' @return A [ggplot2::ggplot()] object.
+#' @export
+#'
+#' @examples
+#' # res <- bcts_calibrate_betaBinom_conj(...)  # Run separately
+#' # plot(res)
+plot.bcts_calibration <- function(x, ...) {
+  stopifnot(!is.null(x$trace), !is.null(x$type1))
+
+  tr     <- x$trace
+  alpha  <- x$alpha
+  gamma  <- x$gamma
+  type1  <- x$type1
+
+  # Small vertical offset above CI
+  offset <- 0.01
+
+  ggplot2::ggplot(tr, ggplot2::aes(x = .data$gamma_try, y = .data$type1)) +
+    ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = .data$ci_lower, ymax = .data$ci_upper),
+      width = 0.002, alpha = 0.4
+    ) +
+    ggplot2::geom_point(size = 2) +
+    ggplot2::geom_line() +
+    ggplot2::geom_point(
+      x = gamma,
+      y = type1["estimate"],
+      color = "blue",
+      size = 3
+    ) +
+    ggplot2::annotate(
+      "text",
+      x = gamma,
+      y = type1["ci_upper"] + offset,
+      label = sprintf("gamma = %.3f\nType-I = %.1f%%",
+                      gamma, 100 * type1["estimate"]),
+      hjust = 0.5,
+      size = 3.5
+    ) +
+    ggplot2::geom_hline(
+      yintercept = alpha,
+      linetype = "dotted",
+      color = "red"
+    ) +
+    ggplot2::labs(
+      x = expression(gamma),
+      y = "Estimated Type-I error",
+      subtitle = sprintf(
+        "Calibrated gamma = %.3f after %d steps; dotted = target alpha = %.2f",
+        gamma, x$iters, alpha
+      )
+    ) +
+    ggplot2::theme_minimal(base_size = 12)+
+    ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1))+
+    ggplot2::scale_x_continuous(labels = scales::label_percent(accuracy = 1))
 }

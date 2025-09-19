@@ -2,7 +2,7 @@
 % Please edit documentation in R/bayesNI-conj-calibrate.R
 \name{bcts_type1_betaBinom_conj}
 \alias{bcts_type1_betaBinom_conj}
-\title{Empirical Type-I Error for Bayesian Trial (Beta–Binomial, conjugate)}
+\title{Empirical Type-I Error for Bayesian Trial (Beta-Binomial, conjugate)}
 \usage{
 bcts_type1_betaBinom_conj(
   B = 2000,
@@ -69,7 +69,7 @@ A list with:
 }
 \description{
 Estimates the Type-I error rate for a Bayesian non-inferiority (or
-superiority) test using conjugate Beta–Binomial updates. The test declares
+superiority) test using conjugate Beta-Binomial updates. The test declares
 success if the posterior probability \eqn{Pr(\theta_t - \theta_c > M | data)}
 exceeds a fixed threshold \code{threshold}. Simulation is conducted under the
 least-favourable null (LFN), where \eqn{p_t = p_c + M}.

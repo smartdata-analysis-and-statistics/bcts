@@ -2,7 +2,7 @@
 % Please edit documentation in R/bayesNI-conj-calibrate.R
 \name{bcts_calibrate_betaBinom_conj}
 \alias{bcts_calibrate_betaBinom_conj}
-\title{Calibrate the posterior threshold gamma (Beta–Binomial, conjugate)}
+\title{Calibrate the posterior threshold gamma (Beta-Binomial, conjugate)}
 \usage{
 bcts_calibrate_betaBinom_conj(
   alpha = 0.1,
@@ -49,7 +49,7 @@ bcts_calibrate_betaBinom_conj(
 \item{n_draws}{Posterior Monte Carlo draws per trial.}
 
 \item{tol}{Absolute tolerance for \verb{|TypeI - alpha|}. If \code{NULL}, a Monte
-Carlo–driven default is used.}
+Carlo-driven default is used.}
 
 \item{maxit}{Maximum number of bisection iterations.}
 
@@ -68,9 +68,9 @@ Carlo–driven default is used.}
 \item{calibrate_on}{Character string indicating which Type-I error quantity
 to match during calibration. One of:
 \itemize{
-\item \code{"point"} — use the Monte Carlo \strong{point estimate} of the Type-I error
-\item \code{"upper"} — use the \strong{upper bound} of the 95\% Monte Carlo CI
-\item \code{"lower"} — use the \strong{lower bound} of the 95\% Monte Carlo CI
+\item \code{"point"} - use the Monte Carlo \strong{point estimate} of the Type-I error
+\item \code{"upper"} - use the \strong{upper bound} of the 95\% Monte Carlo CI
+\item \code{"lower"} - use the \strong{lower bound} of the 95\% Monte Carlo CI
 Default is \code{"point"}.
 }}
 }
@@ -93,7 +93,7 @@ A list with:
 Finds the posterior probability cutoff \eqn{\gamma} such that the Bayesian
 decision rule \code{Pr(theta_t - theta_c > M | data) >= gamma} achieves a
 target Type-I error \code{alpha} under the least-favourable null, using
-conjugate Beta–Binomial updates (no MCMC). A bisection search is performed
+conjugate Beta-Binomial updates (no MCMC). A bisection search is performed
 over \code{[lower, upper]} with caching and common random numbers.
 }
 \examples{

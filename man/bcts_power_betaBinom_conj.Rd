@@ -2,7 +2,7 @@
 % Please edit documentation in R/bayesNI-conj-calibrate.R
 \name{bcts_power_betaBinom_conj}
 \alias{bcts_power_betaBinom_conj}
-\title{Bayesian trial power estimation with Beta–Binomial conjugate model}
+\title{Bayesian trial power estimation with Beta-Binomial conjugate model}
 \usage{
 bcts_power_betaBinom_conj(
   B = 1000,
@@ -67,7 +67,7 @@ A list with:
 }
 }
 \description{
-Uses Monte Carlo simulation with conjugate Beta–Binomial updates
+Uses Monte Carlo simulation with conjugate Beta-Binomial updates
 (no MCMC) to estimate the probability of declaring trial success
 under user-specified assumptions. A trial is declared successful
 if \eqn{Pr(\theta_t - \theta_c > M | data) \ge \gamma}.
