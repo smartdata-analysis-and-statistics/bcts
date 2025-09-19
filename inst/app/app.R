@@ -25,166 +25,203 @@ source_dir(file.path(app_dir, "R"))
 source_dir(file.path(app_dir, "modules"))
 
 
-# ---- small helper: get Pr(NI) across B trials for plotting ------------------
-prNI_draws_conj <- function(B, p_c, p_t, n_c, n_t, M,
-                            prior = c("flat","power"), prior_args = list(),
-                            n_draws = 2000, seed = NULL) {
-  prior <- match.arg(prior)
-  if (!is.null(seed)) set.seed(seed)
-  pr <- numeric(B)
-  for (b in seq_len(B)) {
-    res <- bayesNI_trial_betaBinom_conj(
-      p_c = p_c, p_t = p_t, n_c = n_c, n_t = n_t, M = M,
-      prior = prior, prior_args = prior_args,
-      n_draws = n_draws
-    )
-    pr[b] <- unname(res$summary["post_prob_NI"])
-  }
-  pr
-}
-
-
 # If your functions live in a package, uncomment:
 # library(bcts)
 
-ui <- fluidPage(
-  withMathJax(),   # enable LaTeX rendering for the whole page
-  titlePanel("Bayesian Trial Simulation (Beta–Binomial, conjugate)"),
-  sidebarLayout(
-    sidebarPanel(
+ui <- navbarPage(
+  title = "Bayesian Trial Simulation (Beta–Binomial, conjugate)",
+  tabPanel(
+    title = "Randomized trial",
+    fluidPage(
+      withMathJax(),   # enable LaTeX rendering for the whole page
 
-      # --- Assumptions (truth used for simulation / planning) ---
-      wellPanel(
-        h4("Treatment Arm Assumptions"),
-        sliderInput("pt", HTML("True response rate  (\\(\\theta_t\\))"),
-                    min = 0, max = 100, value = 85, step = 1,
-                    post  = "%"),
-        numericInput("nt", HTML("Number of randomized patients  (\\(n_t \\))"), value = 29, min = 1, step = 1),
+      # --- Description row at top (full width) ---
+      fluidRow(
+        column(
+          width = 12,
+          div(
+            style = "margin-bottom: 20px;",
+            h4("Simulate binary responder outcomes from a randomized trial with a treatment and control arm."),
+            p("Use the controls in the left panel to define the data-generating assumptions, prior distributions, and decision criteria.
+            The design summary and operating characteristics will be shown on the right.")
+          )
+        )
       ),
 
-      # --- Assumptions (truth used for simulation / planning) ---
-      tagList(
-        # Panel 1: Control arm (always shown)
+
+      sidebarPanel(
+
         wellPanel(
-          h4("Control Arm Assumptions"),
-          sliderInput("pc", HTML("True response rate (\\(\\theta_c\\))"),
-                      min = 0, max = 100, value = 85, step = 1, post = "%"),
-          numericInput("nc", HTML("Number of randomized patients (\\(n_c\\))"),
-                       value = 29, min = 1, step = 1),
-
-          selectInput(
-            "prior",
-            "Prior distribution",
-            choices = c("Flat (no external evidence)" = "flat",
-                        "Power prior (with historical data)" = "power"),
-            selected = "flat"
+          h4("Summary Output Type"),
+          radioButtons(
+            inputId = "summary_type",
+            label = "Choose summary format:",
+            choices = c("Narrative" = "narrative", "Technical" = "technical"),
+            selected = "narrative"
           )
         ),
 
-        # Panel 2: External data config (only when prior == power)
-        conditionalPanel(
-          condition = "input.prior == 'power'",
+        # --- Assumptions (truth used for simulation / planning) ---
+        wellPanel(
+          h4("Treatment Arm Assumptions"),
+          sliderInput("pt", HTML("True response rate  (\\(\\theta_t\\))"),
+                      min = 0, max = 100, value = 85, step = 1,
+                      post  = "%"),
+          numericInput("nt", HTML("Number of randomized patients  (\\(n_t \\))"), value = 29, min = 1, step = 1),
+        ),
+
+        # --- Assumptions (truth used for simulation / planning) ---
+        tagList(
+          # Panel 1: Control arm (always shown)
           wellPanel(
-            h4("External Data (Power Prior)"),
-            sliderInput("a0", "Discount factor a₀ (0 = ignore history, 1 = full borrow)",
-                        min = 0, max = 100, value = 50, step = 1, post = "%"),
-            numericInput("y0", "Historical responders (y₀)", value = 64, min = 0, step = 1),
-            numericInput("n0", "Historical sample size (n₀)", value = 75, min = 1, step = 1),
-            numericInput("abase", "Baseline Beta a_base", value = 1, min = 0.001, step = 0.1),
-            numericInput("bbase", "Baseline Beta b_base", value = 1, min = 0.001, step = 0.1)
+            h4("Control Arm Assumptions"),
+            sliderInput("pc", HTML("True response rate (\\(\\theta_c\\))"),
+                        min = 0, max = 100, value = 85, step = 1, post = "%"),
+            numericInput("nc", HTML("Number of randomized patients (\\(n_c\\))"),
+                         value = 29, min = 1, step = 1),
+
+            selectInput(
+              "prior",
+              "Prior distribution",
+              choices = c("Flat (no external evidence)" = "flat",
+                          "Power prior (with historical data)" = "power"),
+              selected = "flat"
+            )
+          ),
+
+          # Panel 2: External data config (only when prior == power)
+          conditionalPanel(
+            condition = "input.prior == 'power'",
+            wellPanel(
+              h4("External Data (Power Prior)"),
+              sliderInput("a0", "Discount factor a₀ (0 = ignore history, 1 = full borrow)",
+                          min = 0, max = 100, value = 50, step = 1, post = "%"),
+              numericInput("y0", "Historical responders (y₀)", value = 64, min = 0, step = 1),
+              numericInput("n0", "Historical sample size (n₀)", value = 75, min = 1, step = 1),
+              numericInput("abase", "Baseline Beta a_base", value = 1, min = 0.001, step = 0.1),
+              numericInput("bbase", "Baseline Beta b_base", value = 1, min = 0.001, step = 0.1)
+            )
           )
-        )
-      ),
-
-
-      wellPanel(
-        h4("Decision criteria"),
-        sliderInput(
-          "M",
-          label = HTML("Decision Margin (\\( \\Delta \\))"),
-          min   = -100, max = 100, value = -20, step = 1, post = "%"
-        ),
-        helpText(
-          "Δ < 0: non-inferiority (treatment may be up to |Δ| worse).",
-          "Δ ≥ 0: superiority (treatment must be at least Δ better).",
-          "Assumes higher response rates are better (responder events)."
         ),
 
-        # Choice: set gamma directly OR set alpha and calibrate gamma
-        radioButtons("decision_mode", "Threshold specification:",
-                     choices = c("Specify posterior probability threshold γ" = "gamma",
-                                 "Specify target Type-I error α" = "alpha"),
-                     selected = "gamma"),
 
-        conditionalPanel(
-          condition = "input.decision_mode == 'gamma'",
+        wellPanel(
+          h4("Decision criteria"),
           sliderInput(
-            "gamma",
-            label = HTML("Posterior probability threshold (\\( \\gamma \\))"),
-            min = 80, max = 99, value = 90, step = 1, post = "%"
+            "M",
+            label = HTML("Decision Margin (\\( \\Delta \\))"),
+            min   = -100, max = 100, value = -20, step = 1, post = "%"
           ),
-          uiOutput("decision_rule")   # placeholder for dynamic help text
-        ),
+          helpText(
+            "Δ < 0: non-inferiority (treatment may be up to |Δ| worse).",
+            "Δ ≥ 0: superiority (treatment must be at least Δ better).",
+            "Assumes higher response rates are better (responder events)."
+          ),
 
-        conditionalPanel(
-          condition = "input.decision_mode == 'alpha'",
-          sliderInput(
-            "alpha",
-            label = HTML("Target Type-I error (\\( \\alpha \\))"),
-            value = 10, min = 1, max = 20, step = 1, post = "%"
-          ),
-          selectInput(
-            "calibrate_on",
-            "Calibrate Type-I on:",
-            choices = c(
-              "Point estimate Pr(reject | H₀)"      = "point",
-              "Upper 95% MC CI (conservative)"      = "upper",
-              "Lower 95% MC CI (liberal)"           = "lower"
+          # Choice: set gamma directly OR set alpha and calibrate gamma
+          radioButtons("decision_mode", "Threshold specification:",
+                       choices = c("Specify posterior probability threshold γ" = "gamma",
+                                   "Specify target Type-I error α" = "alpha"),
+                       selected = "gamma"),
+
+          conditionalPanel(
+            condition = "input.decision_mode == 'gamma'",
+            sliderInput(
+              "gamma",
+              label = HTML("Posterior probability threshold (\\( \\gamma \\))"),
+              min = 80, max = 99, value = 90, step = 1, post = "%"
             ),
-            selected = "upper"
+            uiOutput("decision_rule")   # placeholder for dynamic help text
           ),
-          helpText("γ will be calibrated so that the chosen Type-I metric ≈ α (within tolerance) at the least-favourable null.")
+
+          conditionalPanel(
+            condition = "input.decision_mode == 'alpha'",
+            sliderInput(
+              "alpha",
+              label = HTML("Target Type-I error (\\( \\alpha \\))"),
+              value = 10, min = 1, max = 20, step = 1, post = "%"
+            ),
+            selectInput(
+              "calibrate_on",
+              "Calibrate Type-I on:",
+              choices = c(
+                "Point estimate Pr(reject | H₀)"      = "point",
+                "Upper 95% MC CI (conservative)"      = "upper",
+                "Lower 95% MC CI (liberal)"           = "lower"
+              ),
+              selected = "upper"
+            ),
+            helpText("γ will be calibrated so that the chosen Type-I metric ≈ α (within tolerance) at the least-favourable null.")
+          )
+        ),
+
+
+
+        # --- Posterior Evaluation ---
+        wellPanel(
+          h4("Simulation settings"),
+          numericInput("B",
+                       "Number of simulated trials (for Type-I & Power)",
+                       value = 2500, min = 100, step = 100),
+          helpText(textOutput("design_mc_precision_text")),
+
+          numericInput("ndraws", "Posterior draws per trial (for Pr(NI))", value = 2000, min = 200, step = 100),
+          helpText(textOutput("post_mc_precision_text")),
+
+          numericInput("seed", "Seed (optional)", value = 123, min = 1, step = 1),
+          #helpText(HTML("Larger values give more precise results but increase runtime.")),
+        ),
+
+
+
+        actionButton("run", "Run simulation", class = "btn-primary"),
+
+        hr(),
+        tags$small(
+          paste("bcts version:", utils::packageVersion("bcts"))
         )
       ),
+      mainPanel(
+        conditionalPanel(
+          condition = "input.summary_type == 'technical'",
+          mod_designsummary_ui("dsum")
+        ),
+        conditionalPanel(
+          condition = "input.summary_type == 'narrative'",
+          mod_narrative_ui("narrative")
+        ),
+        mod_armpriors_ui("armpriors", height = 320),
+        mod_oc_ui("oc"),
+
+        # --- Sensitivity analysis ---
+        # Sidebar
+        mod_sensitivity_sidebar_ui("sens"),
+
+        # Main panel (where you want outputs)
+        mod_sensitivity_main_ui("sens", plot_height = 300)
 
 
-
-      # --- Posterior Evaluation ---
-      wellPanel(
-        h4("Simulation settings"),
-        numericInput("B",
-                     "Number of simulated trials (for Type-I & Power)",
-                     value = 2500, min = 100, step = 100),
-        helpText(textOutput("design_mc_precision_text")),
-
-        numericInput("ndraws", "Posterior draws per trial (for Pr(NI))", value = 2000, min = 200, step = 100),
-        helpText(textOutput("post_mc_precision_text")),
-
-        numericInput("seed", "Seed (optional)", value = 123, min = 1, step = 1),
-        #helpText(HTML("Larger values give more precise results but increase runtime.")),
-      ),
-
-
-
-      actionButton("run", "Run simulation", class = "btn-primary"),
-
-      hr(),
-      tags$small(
-        paste("bcts version:", utils::packageVersion("bcts"))
       )
-    ),
-    mainPanel(
-      mod_designsummary_ui("dsum"),
-      mod_armpriors_ui("armpriors", height = 320),
-      mod_oc_ui("oc"),
+    )
+  ),
 
-      # --- Sensitivity analysis ---
-      # Sidebar
-      mod_sensitivity_sidebar_ui("sens"),
-
-      # Main panel (where you want outputs)
-      mod_sensitivity_main_ui("sens", plot_height = 300)
-
+  tabPanel(
+    title = "Single-arm trial",
+    fluidPage(
+      h4("Single-arm trial dashboard (under construction)"),
+      p("This section will allow evaluation of single-arm designs using Beta–Binomial conjugate models."),
+      p("You can simulate a posterior for a single group, compare against a threshold, or incorporate external data via power priors."),
+      br(),
+      wellPanel(
+        p("Include UI elements here for:"),
+        tags$ul(
+          tags$li("True response rate (θ)"),
+          tags$li("Sample size (n)"),
+          tags$li("Prior type: Flat vs Power prior"),
+          tags$li("External data if using power prior"),
+          tags$li("Decision margin (Δ) and threshold (γ or α)")
+        )
+      )
     )
   )
 )
@@ -277,6 +314,21 @@ server <- function(input, output, session) {
     id = "oc",
     sim = sim,                       # your eventReactive returning the results list
     decision_mode = reactive(input$decision_mode)
+  )
+
+  mod_narrative_server(
+    "narrative",
+    pt = reactive(input$pt / 100),  nt = reactive(input$nt),
+    pc = reactive(input$pc / 100),  nc = reactive(input$nc),
+    M  = reactive(input$M  / 100),
+    prior = reactive(input$prior),
+    prior_args = prior_args,
+    decision_mode = reactive(input$decision_mode),
+    gamma = reactive(input$gamma / 100),
+    alpha = reactive(input$alpha / 100),
+    B = reactive(input$B),
+    ndraws = reactive(input$ndraws),
+    seed = reactive(input$seed)
   )
 
 
