@@ -1,4 +1,5 @@
 # modules/mod_designsummary.R
+message("Loaded mod_designsummary.R")
 
 mod_designsummary_ui <- function(id) {
   ns <- NS(id)

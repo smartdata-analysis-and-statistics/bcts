@@ -4,23 +4,31 @@
 # ---- Load packages that the APP needs ----
 library(shiny)
 library(ggplot2)
-library(bcts)   # <- your package is built & installed during deploy
-
-# ---- Locate the installed app directory (inside the bcts package) ----
-app_dir <- system.file("app", package = "bcts")
-stopifnot(nzchar(app_dir), dir.exists(app_dir))
-
-# Optional: serve static assets from inst/app/www as /www
-www_dir <- file.path(app_dir, "www")
-if (dir.exists(www_dir)) addResourcePath("www", www_dir)
+library(bcts)
 
 # Helper to source R files from inst/app/R and inst/app/modules
 source_dir <- function(path) {
   if (dir.exists(path)) {
     fs <- list.files(path, pattern = "\\.R$", full.names = TRUE)
-    for (f in fs) source(f, local = TRUE)
+    for (f in fs) {
+      message("Sourcing: ", basename(f))
+      tryCatch({
+        source(f, local = globalenv())  # Use globalenv for visibility
+      }, error = function(e) {
+        message("Error sourcing ", f, ": ", e$message)
+      })
+    }
   }
 }
+
+USE_LOCAL <- interactive() && dir.exists(file.path("inst", "app"))  # Only TRUE when running locally
+
+app_dir <- if (USE_LOCAL) {
+  file.path("inst", "app")
+} else {
+  "."
+}
+
 source_dir(file.path(app_dir, "R"))
 source_dir(file.path(app_dir, "modules"))
 
@@ -387,10 +395,17 @@ server <- function(input, output, session) {
     pc_current = reactive(input$pc)            # for pre-filling the range nicely
   )
 
-
-
-
-
 }
 
-shinyApp(ui, server)
+tryCatch(
+  {
+    shiny::shinyApp(
+      ui = ui,
+      server = server
+    )
+  },
+  error = function(e) {
+    message("🚨 App failed to launch: ", conditionMessage(e))
+    stop(e)
+  }
+)

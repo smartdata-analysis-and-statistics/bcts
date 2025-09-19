@@ -1,3 +1,5 @@
+# modules/mod_narrative_ui
+message("Loaded mod_narrative_ui.R")
 
 # ---- UI ----
 mod_narrative_ui <- function(id) {
@@ -75,13 +77,11 @@ mod_narrative_server <- function(
         "<p>%s</p>
          <p>%s</p>
          <p>The analysis uses %s.</p>
-         <p>Posterior probabilities are computed using %s draws per simulated trial, across %s simulated trials.</p>
-         <p>Seed = %s (for reproducibility).</p>",
+         <p>Posterior probabilities are computed using %s draws per simulated trial, across %s simulated trials.</p>",
         design_txt,
         arm_txt,
         prior_type,
-        fmt_int(ndraws()), fmt_int(B()),
-        fmt_int(seed())
+        fmt_int(ndraws()), fmt_int(B())
       ))
     })
   })

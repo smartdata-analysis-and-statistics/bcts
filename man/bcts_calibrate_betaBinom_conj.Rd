@@ -16,11 +16,11 @@ bcts_calibrate_betaBinom_conj(
   lower = 0.8,
   upper = 0.999,
   n_draws = 2000,
-  tol = 0.001,
+  tol = NULL,
   maxit = 30,
   seed = 11L,
   show_progress = TRUE,
-  verbose = TRUE,
+  verbose = FALSE,
   digits = 4,
   progress_fun = NULL,
   calibrate_on = c("point", "upper", "lower")

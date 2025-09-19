@@ -288,9 +288,9 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
                                           prior_args = list(),
                                           B_cal = 2000, lower = 0.80, upper = 0.999,
                                           n_draws = 2000,
-                                          tol = 0.001, maxit = 30,
+                                          tol = NULL, maxit = 30,
                                           seed = 11L, show_progress = TRUE,
-                                          verbose = TRUE, digits = 4,
+                                          verbose = FALSE, digits = 4,
                                           progress_fun = NULL,
                                           calibrate_on = c("point","upper","lower")) {
 
@@ -304,12 +304,23 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
   if (p_c < 0 || p_c > 1) stop("`p_c` must be in [0,1].")
   if (n_c < 1 || n_t < 1) stop("`n_c` and `n_t` must be positive integers.")
 
+  # --- Check B_cal ---
+  check_B_cal(B_cal, context = "bcts_calibrate_betaBinom_conj")
+
   set.seed(seed)
   seeds <- sample.int(1e9, B_cal)  # common random numbers
 
+  # Monte Carlo standard error of a binomial proportion
+  mcse <- sqrt(alpha * (1 - alpha) / B_cal)
+
   if (is.null(tol)) {
-    tol <- 1.25 * sqrt(alpha * (1 - alpha) / B_cal)
+    tol <- 1.25 * mcse
     if (verbose) message(sprintf("Auto tol set to %.4f based on B_cal=%d", tol, B_cal))
+  } else if (tol < 0.5 * mcse) {
+    warning(sprintf(
+      "Specified `tol` = %.4f is too narrow relative to Monte Carlo SE = %.4f (based on B_cal = %d). Consider increasing `tol` or B_cal.",
+      tol, mcse, B_cal
+    ))
   }
 
   # cache full results per gamma (so we can reuse MC error, etc.)
@@ -339,18 +350,19 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
     )
   }
 
+
   # initial bracket diagnostics (must bracket alpha on the chosen metric)
   r_lo <- type1_at(lower); m_lo <- get_metric(r_lo)
   r_hi <- type1_at(upper); m_hi <- get_metric(r_hi)
+
+  # One-sided check: ensure that at least one value is below alpha
+  check_alpha_bracketing(calibrate_on, alpha, lower, upper, r_lo, r_hi, verbose = verbose)
+
+  # Optional: verbose printout
   if (verbose) {
     message(sprintf(
       "Init: lower=%.3f -> %s=%.4f | upper=%.3f -> %s=%.4f | target alpha=%.4f",
       lower, calibrate_on, m_lo, upper, calibrate_on, m_hi, alpha))
-  }
-  if (!(m_lo >= alpha && m_hi <= alpha)) {
-    warning(sprintf(
-      "Alpha not bracketed for '%s': metric(lower)=%.4f, metric(upper)=%.4f",
-      calibrate_on, m_lo, m_hi))
   }
 
 
@@ -389,7 +401,14 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
       "Iter %02d: gamma=%.4f -> %s=%.4f (diff=%.4f)",
       i, mid, calibrate_on, m_mid, diff))
 
-    if (abs(diff) < tol) {
+    stop_now <- switch(
+      calibrate_on,
+      point = abs(m_mid - alpha) < tol,
+      upper = (r_mid$ci_upper <= alpha && r_mid$ci_upper > (alpha - tol)),
+      lower = (r_mid$ci_lower >= alpha && r_mid$ci_lower < (alpha + tol))
+    )
+
+    if (stop_now) {
       if (!is.null(progress_fun)) progress_fun(maxit, maxit)  # <- force 100%
       return(list(
         gamma   = mid,
@@ -444,4 +463,79 @@ bcts_calibrate_betaBinom_conj <- function(alpha = 0.10, p_c, M, n_c, n_t,
       seed = seed, calibrate_on = calibrate_on
     )
   )
+}
+
+#' Validate B_cal parameter
+#'
+#' @param B_cal Number of simulations
+#' @param min_reliable Minimum value considered reliable (default = 100)
+#' @param context Optional name of the calling function for better messages
+#' @return An integer-validated B_cal value (invisibly)
+check_B_cal <- function(B_cal, min_reliable = 100, context = NULL) {
+  name <- if (!is.null(context)) paste0(" in ", context) else ""
+
+  if (!is.numeric(B_cal) || length(B_cal) != 1 || B_cal <= 0 || B_cal != as.integer(B_cal)) {
+    stop(sprintf("`B_cal`%s must be a positive integer.", name), call. = FALSE)
+  }
+
+  if (B_cal < min_reliable) {
+    warning(sprintf("`B_cal`%s is very small; Monte Carlo estimates may be unreliable.", name), call. = FALSE)
+  }
+
+  invisible(as.integer(B_cal))
+}
+
+#' Check alpha bracketing for calibration of Type-I error
+#'
+#' @param calibrate_on One of "point", "upper", or "lower"
+#' @param alpha Target Type-I error
+#' @param lower,upper Gamma bounds
+#' @param r_lo Result of type1_at(lower)
+#' @param r_hi Result of type1_at(upper)
+#' @param verbose Print message
+#'
+#' @return Invisibly TRUE
+check_alpha_bracketing <- function(calibrate_on, alpha, lower, upper, r_lo, r_hi, verbose = TRUE) {
+  if (calibrate_on == "point") {
+    est_lo <- r_lo$estimate
+    est_hi <- r_hi$estimate
+    if (!(alpha >= est_hi && alpha <= est_lo)) {
+      warning(sprintf(
+        paste0(
+          "Cannot bracket alpha = %.3f using point estimate.\n",
+          "At gamma = %.3f: estimate = %.4f | at gamma = %.3f: estimate = %.4f.\n",
+          "Try adjusting `lower`, `upper`, or `B_cal`."
+        ), alpha, lower, est_lo, upper, est_hi
+      ))
+    }
+  } else if (calibrate_on == "upper") {
+    if (r_hi$ci_upper > alpha) {
+      warning(sprintf(
+        paste0(
+          "No gamma value found such that the *upper bound* of Type-I error is <= alpha = %.3f.\n",
+          "At gamma = %.3f: upper CI = %.4f.\n",
+          "Try increasing `upper`, decreasing `lower`, or increasing `B_cal`."
+        ), alpha, upper, r_hi$ci_upper
+      ))
+    }
+  } else if (calibrate_on == "lower") {
+    if (r_hi$ci_lower < alpha) {
+      warning(sprintf(
+        paste0(
+          "No gamma value found such that the *lower bound* of Type-I error is >= alpha = %.3f.\n",
+          "At gamma = %.3f: lower CI = %.4f.\n",
+          "Try increasing `upper`, decreasing `lower`, or increasing `B_cal`."
+        ), alpha, upper, r_hi$ci_lower
+      ))
+    }
+  }
+
+  if (verbose) {
+    message(sprintf(
+      "Bracket check: lower=%.3f | upper=%.3f | alpha=%.3f (%s)",
+      lower, upper, alpha, calibrate_on
+    ))
+  }
+
+  invisible(TRUE)
 }

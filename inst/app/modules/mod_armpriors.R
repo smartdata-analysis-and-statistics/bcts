@@ -1,6 +1,9 @@
 # modules/mod_armpriors.R
 # Prior & posterior Beta densities per arm (faceted)
 
+message("Loaded mod_armpriors.R")
+
+
 mod_armpriors_ui <- function(id, height = 320) {
   ns <- NS(id)
   tagList(
