@@ -250,8 +250,8 @@ plotInterimDecisions.bcts <- function(x, color_scheme = "dose_selection",
     ben$decision[which(x$simresults$sel.dose == dose_2)] <- paste("Select", dose_2)
     ben$decision[which(x$simresults$fut.trig)] <- "Futility"
 
-    color_values <- c("Select Velusetrag 15mg" = "#3f88ab",
-                      "Select Velusetrag 30mg" = "#8e1f20",
+    color_values <- c("Dose 1" = "#3f88ab",
+                      "Dose 2" = "#8e1f20",
                       "Futility" = "#59b559")
 
   } else if (color_scheme == "trial_decision") {
