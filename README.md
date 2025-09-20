@@ -31,3 +31,24 @@ A companion **Shiny app** is available to explore designs interactively.
 ```r
 # install.packages("remotes")
 remotes::install_github("smartdata-analysis-and-statistics/bcts")
+```
+
+### Launch the Shiny App
+
+After installation, launch the interactive Shiny app by running:
+
+```r
+bcts::run_bcts_app()
+```
+
+This will open a browser window where you can:
+
+* Simulate randomized and single-arm Bayesian trials,
+* Calibrate posterior decision thresholds,
+* Estimate Type-I error and power under different priors,
+* Explore visualizations of posterior distributions and calibration traces.
+ 
+The app supports trial design using **Bayesian Beta–Binomial models** and is intended to assist both applied users and methodologists.
+
+
+
