@@ -16,6 +16,7 @@ RoxygenNote: 7.3.2
 Depends: 
     R (>= 4.1.0)
 Imports: 
+    Rcpp,
     dplyr,
     purrr,
     binom,
@@ -35,5 +36,6 @@ Suggests:
     tinytest,
     kableExtra,
     tibble
+LinkingTo: Rcpp
 SystemRequirements: JAGS (>= 4.0.0)
 Config/testthat/edition: 3

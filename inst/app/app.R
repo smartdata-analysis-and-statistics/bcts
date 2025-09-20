@@ -112,58 +112,7 @@ ui <- navbarPage(
           )
         ),
 
-
-        wellPanel(
-          h4("Decision criteria"),
-          sliderInput(
-            "M",
-            label = HTML("Decision Margin (\\( \\Delta \\))"),
-            min   = -100, max = 100, value = -20, step = 1, post = "%"
-          ),
-          helpText(
-            "Δ < 0: non-inferiority (treatment may be up to |Δ| worse).",
-            "Δ ≥ 0: superiority (treatment must be at least Δ better).",
-            "Assumes higher response rates are better (responder events)."
-          ),
-
-          # Choice: set gamma directly OR set alpha and calibrate gamma
-          radioButtons("decision_mode", "Threshold specification:",
-                       choices = c("Specify posterior probability threshold γ" = "gamma",
-                                   "Specify target Type-I error α" = "alpha"),
-                       selected = "gamma"),
-
-          conditionalPanel(
-            condition = "input.decision_mode == 'gamma'",
-            sliderInput(
-              "gamma",
-              label = HTML("Posterior probability threshold (\\( \\gamma \\))"),
-              min = 80, max = 99, value = 90, step = 1, post = "%"
-            ),
-            uiOutput("decision_rule")   # placeholder for dynamic help text
-          ),
-
-          conditionalPanel(
-            condition = "input.decision_mode == 'alpha'",
-            sliderInput(
-              "alpha",
-              label = HTML("Target Type-I error (\\( \\alpha \\))"),
-              value = 10, min = 1, max = 20, step = 1, post = "%"
-            ),
-            selectInput(
-              "calibrate_on",
-              "Calibrate Type-I on:",
-              choices = c(
-                "Point estimate Pr(reject | H₀)"      = "point",
-                "Upper 95% MC CI (conservative)"      = "upper",
-                "Lower 95% MC CI (liberal)"           = "lower"
-              ),
-              selected = "upper"
-            ),
-            helpText("γ will be calibrated so that the chosen Type-I metric ≈ α (within tolerance) at the least-favourable null.")
-          )
-        ),
-
-
+        decision_criteria_ui(),
 
         # --- Posterior Evaluation ---
         wellPanel(
@@ -216,18 +165,48 @@ ui <- navbarPage(
   tabPanel(
     title = "Single-arm trial",
     fluidPage(
-      h4("Single-arm trial dashboard (under construction)"),
+      h4("Simulate a single-arm trial with a Bayesian decision rule"),
       p("This section will allow evaluation of single-arm designs using Beta–Binomial conjugate models."),
       p("You can simulate a posterior for a single group, compare against a threshold, or incorporate external data via power priors."),
       br(),
-      wellPanel(
-        p("Include UI elements here for:"),
-        tags$ul(
-          tags$li("True response rate (θ)"),
-          tags$li("Sample size (n)"),
-          tags$li("Prior type: Flat vs Power prior"),
-          tags$li("External data if using power prior"),
-          tags$li("Decision margin (Δ) and threshold (γ or α)")
+      sidebarLayout(
+        sidebarPanel(
+          h4("Design settings"),
+
+          sliderInput("pt_sa", HTML("True response rate (\\( \\theta_t \\))"),
+                      min = 0, max = 100, value = 75, step = 1, post = "%"),
+
+          numericInput("nt_sa", HTML("Sample size (\\( n_t \\))"),
+                       value = 35, min = 1, step = 1),
+
+          selectInput(
+            "prior_sa",
+            "Prior distribution",
+            choices = c("Flat (Beta(1,1))" = "flat",
+                        "Custom Beta prior" = "beta"),
+            selected = "flat"
+          ),
+
+          conditionalPanel(
+            condition = "input.prior_sa == 'beta'",
+            numericInput("abase_sa", "Prior a_base", value = 1, min = 0.01, step = 0.1),
+            numericInput("bbase_sa", "Prior b_base", value = 1, min = 0.01, step = 0.1)
+          ),
+
+          sat_decision_criteria_ui("crit_sa"),
+
+
+
+          numericInput("B_sa", "Number of simulations", value = 1000, min = 100, step = 100),
+          numericInput("ndraws_sa", "Posterior draws per simulation", value = 2000, min = 500, step = 100),
+          numericInput("seed_sa", "Random seed (optional)", value = 123, min = 1, step = 1),
+
+          actionButton("run_sa", "Run single-arm simulation", class = "btn-primary")
+        ),
+
+        mainPanel(
+          verbatimTextOutput("sa_summary"),
+          plotOutput("sa_power_plot")
         )
       )
     )
@@ -241,6 +220,15 @@ server <- function(input, output, session) {
       helpText(HTML(sprintf(
         "Trial is declared successful if the posterior probability that the treatment–control difference exceeds \\( \\Delta = %d\\%% \\) is at least \\( \\gamma = %d\\%% \\).",
         input$M, input$gamma
+      )))
+    )
+  })
+  output$`crit_sa-decision_rule` <- renderUI({
+    withMathJax(
+      helpText(HTML(sprintf(
+        "Trial is declared successful if posterior \\( \\Pr(\\theta > %.2f) \\geq %.1f\\%% \\).",
+        input[["crit_sa-M_sa"]] / 100,
+        input[["crit_sa-gamma_sa"]]
       )))
     )
   })
@@ -394,6 +382,74 @@ server <- function(input, output, session) {
     seed       = reactive(input$seed),
     pc_current = reactive(input$pc)            # for pre-filling the range nicely
   )
+
+  observeEvent(input$run_sa, {
+    req(input$pt_sa, input$nt_sa,
+        input[["crit_sa-M_sa"]],
+        input[["crit_sa-gamma_sa"]])
+
+    prior_type <- input$prior_sa
+    a_base <- if (prior_type == "beta") input$abase_sa else 1
+    b_base <- if (prior_type == "beta") input$bbase_sa else 1
+
+    B <- input$B_sa
+    n_draws <- input$ndraws_sa
+    seed <- input$seed_sa
+
+    pt <- input$pt_sa / 100
+    M <- input[["crit_sa-M_sa"]] / 100
+    gamma <- input[["crit_sa-gamma_sa"]] / 100
+
+    withProgress(message = "Running single-arm simulations...", {
+      power_res <- bcts::singlearm_beta_power(
+        B = B,
+        p_t = pt,
+        n_t = input$nt_sa,
+        M = M,
+        threshold = gamma,
+        prior = prior_type,
+        a_base = a_base,
+        b_base = b_base,
+        n_draws = n_draws,
+        show_progress = FALSE
+      )
+
+      type1_res <- bcts::singlearm_beta_type1(
+        B = B,
+        n_t = input$nt_sa,
+        M = M,
+        threshold = gamma,
+        prior = prior_type,
+        a_base = a_base,
+        b_base = b_base,
+        n_draws = n_draws,
+        show_progress = FALSE
+      )
+
+      output$sa_summary <- renderPrint({
+        cat("POWER ANALYSIS\n")
+        cat(sprintf("Estimated power: %.2f%%\n", 100 * power_res$estimate))
+        cat(sprintf("MC standard error: %.2f%%\n", 100 * power_res$mc_se))
+        cat(sprintf("Successes: %d out of %d simulations\n\n", power_res$successes, power_res$B))
+
+        cat("TYPE-I ERROR ANALYSIS\n")
+        cat(sprintf("Estimated Type-I error: %.2f%%\n", 100 * type1_res$estimate))
+        cat(sprintf("MC standard error: %.2f%%\n", 100 * type1_res$mc_se))
+        cat(sprintf("False positives: %d out of %d simulations\n", type1_res$successes, type1_res$B))
+      })
+
+      output$sa_power_plot <- renderPlot({
+        barplot(
+          height = c(100 * power_res$estimate, 100 * type1_res$estimate),
+          names.arg = c("Power", "Type-I error"),
+          ylim = c(0, 100),
+          col = c("#4682B4", "#D2691E"),
+          ylab = "Estimate (%)",
+          main = "Single-Arm Trial: Power vs Type-I Error"
+        )
+      })
+    })
+  })
 
 }
 
