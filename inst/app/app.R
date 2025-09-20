@@ -174,10 +174,10 @@ ui <- navbarPage(
           h4("Design settings"),
 
           sliderInput("pt_sa", HTML("True response rate (\\( \\theta_t \\))"),
-                      min = 0, max = 100, value = 75, step = 1, post = "%"),
+                      min = 0, max = 100, value = 80, step = 1, post = "%"),
 
           numericInput("nt_sa", HTML("Sample size (\\( n_t \\))"),
-                       value = 35, min = 1, step = 1),
+                       value = 40, min = 1, step = 1),
 
           selectInput(
             "prior_sa",
