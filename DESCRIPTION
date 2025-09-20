@@ -1,6 +1,6 @@
 Package: bcts
 Title: Sample Size Estimation for Adaptive trials
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: c(
     person(given = "Thomas", 
            family = "Debray", 
