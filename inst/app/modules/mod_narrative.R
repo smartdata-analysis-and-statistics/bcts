@@ -61,12 +61,16 @@ mod_narrative_server <- function(
         prior(),
         "flat" = "a non-informative flat prior for the response rate in each arm",
         "power" = {
-          eff_n0 <- prior_args()$a0 * prior_args()$n_0
+          a0   <- prior_args()$a0   %||% 0
+          n_0  <- prior_args()$n_0  %||% 1
+          y_0  <- prior_args()$y_0  %||% 0
+          eff_n0 <- a0 * n_0
+
           sprintf(
             "a power prior incorporating %s/%s historical responders. The historical data is down-weighted using a factor of %.0f%%, resulting in an effective contribution equivalent to %.1f patients",
-            fmt_int(prior_args()$y_0),
-            fmt_int(prior_args()$n_0),
-            100 * prior_args()$a0,
+            fmt_int(y_0),
+            fmt_int(n_0),
+            100 * a0,
             eff_n0
           )
         }

@@ -7,15 +7,15 @@ library(ggplot2)
 library(bcts)
 
 # Helper to source R files from inst/app/R and inst/app/modules
-source_dir <- function(path) {
+source_dir <- function(path, recursive = TRUE) {
   if (dir.exists(path)) {
-    fs <- list.files(path, pattern = "\\.R$", full.names = TRUE)
+    fs <- list.files(path, pattern = "\\.R$", full.names = TRUE, recursive = recursive)
     for (f in fs) {
-      message("Sourcing: ", basename(f))
+      message("Sourcing: ", f)
       tryCatch({
-        source(f, local = globalenv())  # Use globalenv for visibility
+        source(f, local = globalenv())  # globalenv ensures visibility across app
       }, error = function(e) {
-        message("Error sourcing ", f, ": ", e$message)
+        message("❌ Error sourcing ", f, ": ", e$message)
       })
     }
   }
@@ -38,6 +38,7 @@ source_dir(file.path(app_dir, "modules"))
 
 ui <- navbarPage(
   title = "Bayesian Trial Simulation (Beta–Binomial, conjugate)",
+  mod_info_ui("info"),
   tabPanel(
     title = "Randomized trial",
     fluidPage(
@@ -133,10 +134,6 @@ ui <- navbarPage(
 
         actionButton("run", "Run simulation", class = "btn-primary"),
 
-        hr(),
-        tags$small(
-          paste("bcts version:", utils::packageVersion("bcts"))
-        )
       ),
       mainPanel(
         conditionalPanel(
@@ -162,50 +159,11 @@ ui <- navbarPage(
     )
   ),
 
-  tabPanel(
-    title = "Single-arm trial",
-    fluidPage(
-      h4("Simulate a single-arm trial with a Bayesian decision rule"),
-      p("This section will allow evaluation of single-arm designs using Beta–Binomial conjugate models."),
-      p("You can simulate a posterior for a single group, compare against a threshold, or incorporate external data via power priors."),
-      br(),
-      sidebarLayout(
-        sidebarPanel(
-          h4("Design settings"),
-
-          sliderInput("pt_sa", HTML("True response rate (\\( \\theta_t \\))"),
-                      min = 0, max = 100, value = 80, step = 1, post = "%"),
-
-          numericInput("nt_sa", HTML("Sample size (\\( n_t \\))"),
-                       value = 40, min = 1, step = 1),
-
-          selectInput(
-            "prior_sa",
-            "Prior distribution",
-            choices = c("Flat (Beta(1,1))" = "flat",
-                        "Custom Beta prior" = "beta"),
-            selected = "flat"
-          ),
-
-          conditionalPanel(
-            condition = "input.prior_sa == 'beta'",
-            numericInput("abase_sa", "Prior a_base", value = 1, min = 0.01, step = 0.1),
-            numericInput("bbase_sa", "Prior b_base", value = 1, min = 0.01, step = 0.1)
-          ),
-
-          sat_decision_criteria_ui("crit_sa"),
-        ),
-
-        mainPanel(
-          verbatimTextOutput("sa_summary"),
-          plotOutput("sa_power_plot")
-        )
-      )
-    )
-  )
+  mod_singlearm_ui("singlearm")
 )
 
 server <- function(input, output, session) {
+
 
   output$decision_rule <- renderUI({
     withMathJax(  # <- ensure newly injected HTML is typeset
@@ -375,7 +333,7 @@ server <- function(input, output, session) {
     pc_current = reactive(input$pc)            # for pre-filling the range nicely
   )
 
-  sa_results <- reactive({
+  observeEvent(input$run_sa, {
     req(input$pt_sa, input$nt_sa,
         input[["crit_sa-M_sa"]],
         input[["crit_sa-gamma_sa"]])
@@ -392,54 +350,41 @@ server <- function(input, output, session) {
     M <- input[["crit_sa-M_sa"]] / 100
     gamma <- input[["crit_sa-gamma_sa"]] / 100
 
-    power_res <- bcts::singlearm_beta_power(
-      B = B,
-      p_t = pt,
-      n_t = input$nt_sa,
-      M = M,
-      threshold = gamma,
-      prior = prior_type,
-      a_base = a_base,
-      b_base = b_base,
-      method = "exact",
-      show_progress = FALSE
-    )
+    withProgress(message = "Running single-arm simulations...", {
+      power_res <- bcts::singlearm_beta_power(
+        B = B,
+        p_t = pt,
+        n_t = input$nt_sa,
+        M = M,
+        threshold = gamma,
+        prior = prior_type,
+        a_base = a_base,
+        b_base = b_base,
+        #n_draws = n_draws,
+        method = "exact",
+        show_progress = FALSE
+      )
 
-    type1_res <- bcts::singlearm_beta_type1(
-      B = B,
-      n_t = input$nt_sa,
-      M = M,
-      threshold = gamma,
-      prior = prior_type,
-      a_base = a_base,
-      b_base = b_base,
-      n_draws = n_draws,
-      method = "exact",
-      show_progress = FALSE
-    )
+      type1_res <- bcts::singlearm_beta_type1(
+        B = B,
+        n_t = input$nt_sa,
+        M = M,
+        threshold = gamma,
+        prior = prior_type,
+        a_base = a_base,
+        b_base = b_base,
+        n_draws = n_draws,
+        show_progress = FALSE
+      )
 
-    list(power = power_res, type1 = type1_res)
+
+
+
+    })
   })
 
-  output$sa_summary <- renderPrint({
-    res <- sa_results()
-    power_res <- res$power
-    type1_res <- res$type1
-
-    cat("POWER ANALYSIS\n")
-    cat(sprintf("Estimated power: %.2f%%\n", 100 * power_res$estimate))
-    cat(sprintf("MC standard error: %.2f%%\n", 100 * power_res$mc_se %||% NA_real_))
-    cat(sprintf("Successes: %d out of %d simulations\n\n",
-                power_res$successes %||% NA_integer_,
-                power_res$B %||% NA_integer_))
-
-    cat("TYPE-I ERROR ANALYSIS\n")
-    cat(sprintf("Estimated Type-I error: %.2f%%\n", 100 * type1_res$estimate))
-    cat(sprintf("MC standard error: %.2f%%\n", 100 * type1_res$mc_se %||% NA_real_))
-    cat(sprintf("False positives: %d out of %d simulations\n",
-                type1_res$successes %||% NA_integer_,
-                type1_res$B %||% NA_integer_))
-  })
+  mod_singlearm_server("singlearm")  # server logic for single-arm studies
+  mod_info_server("info")
 
 }
 

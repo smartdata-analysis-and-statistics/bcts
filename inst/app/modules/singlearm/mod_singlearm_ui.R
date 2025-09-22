@@ -1,0 +1,179 @@
+#' @title Single-Arm Trial UI Module
+#' @description UI for the single-arm Bayesian binomial trial tab
+#' @export
+mod_singlearm_ui <- function(id) {
+  ns <- NS(id)
+
+  tabPanel(
+    title = "Single-arm trial",
+    fluidPage(
+      h4("Simulate a single-arm trial with a Bayesian decision rule"),
+      p("This section will allow evaluation of single-arm designs using Beta–Binomial conjugate models."),
+      p("You can simulate a posterior for a single group, compare against a threshold, or incorporate external data via power priors."),
+      br(),
+      sidebarLayout(
+        sidebarPanel(
+          h4("Design settings"),
+
+          sliderInput(ns("pt_sa"), HTML("True response rate (\\( \\theta_t \\))"),
+                      min = 0, max = 100, value = 80, step = 1, post = "%"),
+
+          numericInput(ns("nt_sa"), HTML("Sample size (\\( n_t \\))"),
+                       value = 40, min = 1, step = 1),
+
+          selectInput(
+            ns("prior_sa"),
+            "Prior distribution",
+            choices = c("Flat (Beta(1,1))" = "flat",
+                        "Custom Beta prior" = "beta"),
+            selected = "flat"
+          ),
+
+          conditionalPanel(
+            condition = sprintf("input['%s'] == 'beta'", ns("prior_sa")),
+            numericInput(ns("abase_sa"), "Prior a_base", value = 1, min = 0.01, step = 0.1),
+            numericInput(ns("bbase_sa"), "Prior b_base", value = 1, min = 0.01, step = 0.1)
+          ),
+
+          sat_decision_criteria_ui(ns("crit_sa"))
+        ),
+
+        mainPanel(
+          h4("Narrative summary"),
+          textOutput(ns("sa_narrative_text")),
+          verbatimTextOutput(ns("sa_summary")),
+          plotOutput(ns("sa_power_plot"))
+        )
+      )
+    )
+  )
+}
+
+
+mod_singlearm_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    ns <- session$ns
+
+    `%||%` <- function(x, y) if (is.null(x)) y else x
+    fmt_pct <- function(x, d = 1) sprintf(paste0("%.", d, "f%%"), 100 * x)
+    fmt_int <- function(x) formatC(as.integer(x), big.mark = ",", format = "d")
+
+    # Compute simulation results
+    sa_results <- reactive({
+      req(input$pt_sa, input$nt_sa,
+          input[["crit_sa-M_sa"]],
+          input[["crit_sa-gamma_sa"]])
+
+      prior_type <- input$prior_sa
+      a_base <- if (prior_type == "beta") input$abase_sa else 1
+      b_base <- if (prior_type == "beta") input$bbase_sa else 1
+
+      B <- input$B_sa
+      n_draws <- input$ndraws_sa
+      seed <- input$seed_sa
+
+      pt <- input$pt_sa / 100
+      M <- input[["crit_sa-M_sa"]] / 100
+      gamma <- input[["crit_sa-gamma_sa"]] / 100
+
+      power_res <- bcts::singlearm_beta_power(
+        B = B,
+        p_t = pt,
+        n_t = input$nt_sa,
+        M = M,
+        threshold = gamma,
+        prior = prior_type,
+        a_base = a_base,
+        b_base = b_base,
+        method = "exact",
+        show_progress = FALSE
+      )
+
+      type1_res <- bcts::singlearm_beta_type1(
+        B = B,
+        n_t = input$nt_sa,
+        M = M,
+        threshold = gamma,
+        prior = prior_type,
+        a_base = a_base,
+        b_base = b_base,
+        n_draws = n_draws,
+        method = "exact",
+        show_progress = FALSE
+      )
+
+      list(power = power_res, type1 = type1_res)
+    })
+
+    # --- Render narrative directly ---
+    output$sa_narrative_text <- renderText({
+      pt <- input$pt_sa / 100
+      nt <- input$nt_sa
+      M  <- input[["crit_sa-M_sa"]] / 100
+      gamma <- input[["crit_sa-gamma_sa"]] / 100
+      alpha <- 0.05
+      decision_mode <- "gamma"
+      prior_type <- input$prior_sa
+      a_base <- input$abase_sa %||% 1
+      b_base <- input$bbase_sa %||% 1
+      B <- input$B_sa
+      ndraws <- input$ndraws_sa
+
+      design_txt <- if (decision_mode == "gamma") {
+        sprintf(
+          "This design evaluates whether the treatment works well enough by checking if its response rate is above %.1f%% in most simulated trials (at least %.0f%% of the time).",
+          100 * M, 100 * gamma
+        )
+      } else {
+        sprintf(
+          "This design checks if the treatment response rate is above %.1f%% while keeping the chance of a false positive below %.1f%%.",
+          100 * M, 100 * alpha
+        )
+      }
+
+      arm_txt <- sprintf(
+        "The trial includes %s patients, with an expected success rate of %.1f%%.",
+        nt, 100 * pt
+      )
+
+      prior_txt <- switch(
+        prior_type,
+        "flat" = "The analysis uses a flat prior, meaning all possible success rates are considered equally likely before seeing any data.",
+        "beta" = sprintf(
+          "The analysis uses a Beta prior with values a = %.2f and b = %.2f, which reflects prior beliefs about likely success rates.",
+          a_base, b_base
+        ),
+        "unknown prior type"
+      )
+
+      sim_txt <- sprintf(
+        "The results are based on %s simulated trials, each using %s draws from the posterior.",
+        fmt_int(B), fmt_int(ndraws)
+      )
+
+      paste(design_txt, arm_txt, prior_txt, sim_txt, sep = "\n\n")
+    })
+
+    # Text summary output
+    output$sa_summary <- renderPrint({
+      res <- sa_results()
+      power_res <- res$power
+      type1_res <- res$type1
+
+      cat("POWER ANALYSIS\n")
+      cat(sprintf("Estimated power: %.2f%%\n", 100 * power_res$estimate))
+      cat(sprintf("MC standard error: %.2f%%\n", 100 * power_res$mc_se %||% NA_real_))
+      cat(sprintf("Successes: %d out of %d simulations\n\n",
+                  power_res$successes %||% NA_integer_,
+                  power_res$B %||% NA_integer_))
+
+      cat("TYPE-I ERROR ANALYSIS\n")
+      cat(sprintf("Estimated Type-I error: %.2f%%\n", 100 * type1_res$estimate))
+      cat(sprintf("MC standard error: %.2f%%\n", 100 * type1_res$mc_se %||% NA_real_))
+      cat(sprintf("False positives: %d out of %d simulations\n",
+                  type1_res$successes %||% NA_integer_,
+                  type1_res$B %||% NA_integer_))
+    })
+
+  })
+}
