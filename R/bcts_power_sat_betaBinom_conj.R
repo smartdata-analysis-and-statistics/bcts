@@ -1,22 +1,46 @@
-#' Simulate Bayesian power for a single-arm binomial trial (via Rcpp)
+#' Estimate Bayesian power for a single-arm binomial trial
 #'
-#' @param B Number of trial simulations.
+#' @description Computes the Bayesian power for a single-arm binomial trial
+#' using either simulation or exact analytic summation over all possible outcomes.
+#'
+#' @param B Number of trial simulations (used only if \code{method = "simulate"}).
 #' @param p_t True response probability.
 #' @param n_t Sample size.
 #' @param M Threshold for success (e.g. 0.6).
 #' @param threshold Posterior probability threshold (e.g. 0.95).
 #' @param prior Prior type: "flat" or "beta".
-#' @param a_base Alpha of Beta prior (only used if prior = "beta").
-#' @param b_base Beta of Beta prior (only used if prior = "beta").
-#' @param n_draws Number of posterior samples per trial.
-#' @param show_progress Show progress bar?
+#' @param a_base Alpha of Beta prior (only used if \code{prior = "beta"}).
+#' @param b_base Beta of Beta prior (only used if \code{prior = "beta"}).
+#' @param show_progress Show progress bar? (only relevant for simulation).
+#' @param method Either \code{"simulate"} (default) or \code{"exact"}.
 #'
-#' @return A list with `estimate` (power), `mc_se`, `successes`, and `B`.
+#' @return A list with \code{estimate} (power), \code{mc_se}, \code{successes}, and \code{B}.
+#'
+#' @examples
+#' singlearm_beta_power(
+#'   B = 1000, p_t = 0.75, n_t = 35, M = 0.60,
+#'   threshold = 0.95, prior = "flat", method = "simulate"
+#' )
+#'
+#' singlearm_beta_power(
+#'   p_t = 0.75, n_t = 35, M = 0.60,
+#'   threshold = 0.95, prior = "flat", method = "exact"
+#' )
 #'
 #' @export
-singlearm_beta_power <- function(B, p_t, n_t, M, threshold,
+singlearm_beta_power <- function(B = 10000, p_t, n_t, M, threshold,
                                  prior = "flat", a_base = 1, b_base = 1,
-                                 n_draws = 2000, show_progress = TRUE) {
-  .Call(`_bcts_singlearm_beta_power`, B, p_t, n_t, M, threshold,
-        prior, a_base, b_base, n_draws, show_progress)
+                                 show_progress = TRUE,
+                                 method = c("exact", "simulate")) {
+  method <- match.arg(method)
+
+  if (method == "simulate") {
+    .Call(`_bcts_singlearm_beta_power`,
+          B, p_t, n_t, M, threshold,
+          prior, a_base, b_base, show_progress)
+  } else {
+    .Call(`_bcts_singlearm_beta_power_exact`,
+          p_t, n_t, M, threshold,
+          prior, a_base, b_base)
+  }
 }

@@ -410,7 +410,8 @@ server <- function(input, output, session) {
         prior = prior_type,
         a_base = a_base,
         b_base = b_base,
-        n_draws = n_draws,
+        #n_draws = n_draws,
+        method = "exact",
         show_progress = FALSE
       )
 

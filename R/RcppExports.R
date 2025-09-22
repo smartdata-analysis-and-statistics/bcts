@@ -5,6 +5,49 @@ beta_prob_gt <- function(a, b, M, n_draws) {
     .Call(`_bcts_beta_prob_gt`, a, b, M, n_draws)
 }
 
+#' @title Analytic Power Calculation for Single-Arm Beta-Binomial Design
+#'
+#' @description Computes the exact Bayesian power for a single-arm binomial trial with a
+#' conjugate Beta prior. Power is defined as the probability that the posterior probability
+#' that the true response rate exceeds a threshold \code{M} is greater than or equal to
+#' a prespecified cutoff \code{threshold}, under a fixed true response rate \code{p_t}.
+#'
+#' This function avoids simulation and uses a deterministic summation over all possible
+#' outcomes of the binomial distribution.
+#'
+#' @param p_t Numeric in \[0, 1\]. True response probability for the treatment arm.
+#' @param n_t Integer. Sample size of the treatment arm.
+#' @param M Numeric in \[0, 1\]. Threshold on the response rate for decision-making,
+#' e.g., \code{M = 0.6}.
+#' @param threshold Numeric in \[0, 1\]. Posterior probability cutoff for declaring success,
+#' e.g., \code{0.95}.
+#' @param prior Character string. Either \code{"flat"} for a Beta(1,1) prior or
+#' \code{"beta"} to specify a custom prior using \code{a_base} and \code{b_base}.
+#' @param a_base Numeric. Alpha parameter for the Beta prior (used only if \code{prior = "beta"}).
+#' @param b_base Numeric. Beta parameter for the Beta prior (used only if \code{prior = "beta"}).
+#'
+#' @return A named list with:
+#' \describe{
+#'   \item{\code{estimate}}{The exact Bayesian power (a number between 0 and 1).}
+#'   \item{\code{mc_se}}{\code{NA_real_}, returned for compatibility (Monte Carlo SE not applicable).}
+#'   \item{\code{B}}{\code{NA_integer_}, returned for compatibility with simulation version.}
+#'   \item{\code{successes}}{\code{NA_integer_}, returned for compatibility.}
+#' }
+#'
+#' @examples
+#' singlearm_beta_power_exact(
+#'   p_t = 0.75, n_t = 35, M = 0.6,
+#'   threshold = 0.95, prior = "flat"
+#' )
+#'
+#' @seealso \code{\link{singlearm_beta_power}} for the simulation-based version.
+#'
+#' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
+#' @export
+singlearm_beta_power_exact <- function(p_t, n_t, M, threshold, prior = "flat", a_base = 1, b_base = 1) {
+    .Call(`_bcts_singlearm_beta_power_exact`, p_t, n_t, M, threshold, prior, a_base, b_base)
+}
+
 #' @title Compute p-values for a t-distribution with Fixed Degrees of Freedom
 #'
 #' @description Simulates a single-arm binomial trial with a conjugate Beta prior,
@@ -22,7 +65,6 @@ beta_prob_gt <- function(a, b, M, n_draws) {
 #' \code{"beta"} to specify a custom prior using \code{a_base} and \code{b_base}.
 #' @param a_base Numeric. Alpha parameter for the Beta prior (only used if \code{prior = "beta"}).
 #' @param b_base Numeric. Beta parameter for the Beta prior (only used if \code{prior = "beta"}).
-#' @param n_draws Integer. Number of posterior draws per trial.
 #' @param show_progress Logical. If \code{TRUE}, prints a simple progress bar to console.
 #'
 #' @return A list with: estimate (power), mc_se, successes, B.
@@ -30,13 +72,13 @@ beta_prob_gt <- function(a, b, M, n_draws) {
 #' @examples
 #' singlearm_beta_power(
 #'   B = 1000, p_t = 0.75, n_t = 35, M = 0.60,
-#'   threshold = 0.95, prior = "flat", n_draws = 2000
+#'   threshold = 0.95, prior = "flat"
 #' )
 #'
 #' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 #' @export
-singlearm_beta_power <- function(B, p_t, n_t, M, threshold, prior = "flat", a_base = 1, b_base = 1, n_draws = 2000L, show_progress = TRUE) {
-    .Call(`_bcts_singlearm_beta_power`, B, p_t, n_t, M, threshold, prior, a_base, b_base, n_draws, show_progress)
+singlearm_beta_power <- function(B, p_t, n_t, M, threshold, prior = "flat", a_base = 1, b_base = 1, show_progress = TRUE) {
+    .Call(`_bcts_singlearm_beta_power`, B, p_t, n_t, M, threshold, prior, a_base, b_base, show_progress)
 }
 
 #' @title Estimate Type-I Error for Single-Arm Trial
@@ -52,7 +94,6 @@ singlearm_beta_power <- function(B, p_t, n_t, M, threshold, prior = "flat", a_ba
 #' @param prior "flat" or "beta".
 #' @param a_base Alpha parameter for Beta prior (if prior = "beta").
 #' @param b_base Beta parameter for Beta prior (if prior = "beta").
-#' @param n_draws Number of posterior draws per trial.
 #' @param show_progress Logical. Show progress in console?
 #'
 #' @return A list with \code{estimate} (type-I error), \code{mc_se}, \code{B}, and \code{rejections}.
@@ -60,12 +101,57 @@ singlearm_beta_power <- function(B, p_t, n_t, M, threshold, prior = "flat", a_ba
 #' @examples
 #' singlearm_beta_type1(
 #'   B = 1000, n_t = 35, M = 0.6,
-#'   threshold = 0.95, prior = "flat", n_draws = 2000
+#'   threshold = 0.95, prior = "flat"
 #' )
 #'
 #' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 #' @export
-singlearm_beta_type1 <- function(B, n_t, M, threshold, prior = "flat", a_base = 1, b_base = 1, n_draws = 2000L, show_progress = TRUE) {
-    .Call(`_bcts_singlearm_beta_type1`, B, n_t, M, threshold, prior, a_base, b_base, n_draws, show_progress)
+singlearm_beta_type1 <- function(B, n_t, M, threshold, prior = "flat", a_base = 1, b_base = 1, show_progress = TRUE) {
+    .Call(`_bcts_singlearm_beta_type1`, B, n_t, M, threshold, prior, a_base, b_base, show_progress)
+}
+
+#' @title Exact Type-I Error for Single-Arm Trial (Beta-Binomial)
+#'
+#' @description Computes the exact Type-I error for a single-arm binomial trial
+#' using a conjugate Beta prior. This is done by summing the probability of all
+#' outcomes where the posterior probability that \eqn{\theta > M} exceeds a
+#' decision threshold \code{threshold}, under the null hypothesis.
+#'
+#' By default, the null hypothesis is \eqn{\theta = M}, but a more conservative
+#' frequentist setting can be evaluated by setting \code{p_null < M}.
+#'
+#' @param n_t Integer. Sample size of the treatment arm.
+#' @param M Numeric in \[0, 1\]. Decision threshold on the response rate, e.g., \code{M = 0.6}.
+#' @param threshold Numeric in \[0, 1\]. Posterior probability cutoff for declaring success,
+#' e.g., \code{threshold = 0.95}.
+#' @param prior Character string. Either \code{"flat"} for a Beta(1,1) prior or
+#' \code{"beta"} to specify a custom prior using \code{a_base} and \code{b_base}.
+#' @param a_base Numeric. Alpha parameter for the Beta prior (only used if \code{prior = "beta"}).
+#' @param b_base Numeric. Beta parameter for the Beta prior (only used if \code{prior = "beta"}).
+#' @param p_null Optional. True response probability under the null hypothesis (e.g., \code{p_null = 0.6}).
+#' If not specified, defaults to \code{p_null = M} (boundary case).
+#'
+#' @return A named list with:
+#' \describe{
+#'   \item{\code{estimate}}{Exact Type-I error (a number between 0 and 1).}
+#'   \item{\code{mc_se}}{\code{NA_real_}, included for compatibility.}
+#'   \item{\code{B}}{\code{NA_integer_}, included for compatibility.}
+#'   \item{\code{rejections}}{\code{NA_integer_}, included for compatibility.}
+#' }
+#'
+#' @examples
+#' # Type-I error under flat prior at boundary
+#' singlearm_beta_type1_exact(n_t = 40, M = 0.65, threshold = 0.9, prior = "flat")
+#'
+#' # Type-I error under true p < M (frequentist view)
+#' singlearm_beta_type1_exact(n_t = 40, M = 0.65, threshold = 0.9,
+#'                            prior = "flat", p_null = 0.60)
+#'
+#' @seealso \code{\link{singlearm_beta_type1}} for the simulation-based version.
+#'
+#' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
+#' @export
+singlearm_beta_type1_exact <- function(n_t, M, threshold, prior = "flat", a_base = 1, b_base = 1, p_null = -1.0) {
+    .Call(`_bcts_singlearm_beta_type1_exact`, n_t, M, threshold, prior, a_base, b_base, p_null)
 }
 

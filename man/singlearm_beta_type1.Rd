@@ -6,64 +6,98 @@
 \title{Estimate Type-I Error for Single-Arm Trial}
 \usage{
 singlearm_beta_type1(
-  B,
+  B = 10000,
   n_t,
   M,
   threshold,
   prior = "flat",
   a_base = 1,
   b_base = 1,
+  p_null = NULL,
   n_draws = 2000,
-  show_progress = TRUE
+  show_progress = TRUE,
+  method = c("exact", "simulate")
 )
 
 singlearm_beta_type1(
-  B,
+  B = 10000,
   n_t,
   M,
   threshold,
   prior = "flat",
   a_base = 1,
   b_base = 1,
+  p_null = NULL,
   n_draws = 2000,
-  show_progress = TRUE
+  show_progress = TRUE,
+  method = c("exact", "simulate")
 )
 }
 \arguments{
-\item{B}{Number of trial simulations.}
+\item{B}{Integer. Number of simulations (only used if \code{method = "simulate"}).}
 
-\item{n_t}{Sample size.}
+\item{n_t}{Integer. Sample size of the treatment arm.}
 
-\item{M}{Decision threshold (also used as null hypothesis value).}
+\item{M}{Numeric. Decision threshold (also used as null value if \code{p_null} not specified).}
 
-\item{threshold}{Posterior probability threshold (e.g. 0.95).}
+\item{threshold}{Numeric. Posterior probability threshold for declaring success, e.g., \code{0.95}.}
 
-\item{prior}{Prior type: "flat" or "beta".}
+\item{prior}{Character string. Either \code{"flat"} (Beta(1,1)) or \code{"beta"}.}
 
-\item{a_base}{Alpha of Beta prior (only used if prior = "beta").}
+\item{a_base}{Numeric. Alpha parameter of the Beta prior (used only if \code{prior = "beta"}).}
 
-\item{b_base}{Beta of Beta prior (only used if prior = "beta").}
+\item{b_base}{Numeric. Beta parameter of the Beta prior (used only if \code{prior = "beta"}).}
 
-\item{n_draws}{Number of posterior samples per trial.}
+\item{p_null}{Optional numeric. True response rate under the null hypothesis (default is \code{M}).
+Only used when \code{method = "exact"}.}
 
-\item{show_progress}{Show progress bar?}
+\item{n_draws}{Ignored. Kept for backward compatibility.}
+
+\item{show_progress}{Logical. Show progress bar during simulation (only relevant for \code{method = "simulate"}).}
+
+\item{method}{Character. Either \code{"exact"} (default) or \code{"simulate"}.}
 }
 \value{
 A list with \code{estimate} (type-I error), \code{mc_se}, \code{B}, and \code{rejections}.
 
-A list with \code{estimate} (type-I error), \code{mc_se}, \code{rejections}, and \code{B}.
+A named list with:
+\describe{
+\item{\code{estimate}}{Estimated Type-I error rate.}
+\item{\code{mc_se}}{Monte Carlo standard error (NA for exact).}
+\item{\code{rejections}}{Number of rejections (NA for exact).}
+\item{\code{B}}{Number of simulations (NA for exact).}
+}
 }
 \description{
 Simulates a single-arm binomial trial under the null hypothesis,
 and computes the type-I error: the proportion of simulations where posterior
 Pr(θ > M) ≥ threshold even though θ = p_null.
+
+Computes the Bayesian Type-I error for a single-arm binomial trial
+using a conjugate Beta prior. You can choose between a simulation-based approach
+or an exact summation over all possible outcomes under the null hypothesis.
+
+By default, the null hypothesis assumes \code{p_null = M} (i.e., testing at the boundary),
+but for a more conservative frequentist setting, you may specify \code{p_null < M}.
 }
 \examples{
 singlearm_beta_type1(
   B = 1000, n_t = 35, M = 0.6,
-  threshold = 0.95, prior = "flat", n_draws = 2000
+  threshold = 0.95, prior = "flat"
 )
 
+# Simulated Type-I error at boundary (p_null = M)
+singlearm_beta_type1(B = 10000, n_t = 40, M = 0.65, threshold = 0.9, method = "simulate")
+
+# Exact Type-I error at boundary (p_null = M)
+singlearm_beta_type1(n_t = 40, M = 0.65, threshold = 0.9, method = "exact")
+
+# Exact Type-I error with p_null < M (frequentist-style)
+singlearm_beta_type1(n_t = 40, M = 0.65, threshold = 0.9, method = "exact", p_null = 0.60)
+
+}
+\seealso{
+\code{\link{singlearm_beta_power}}, \code{\link{singlearm_beta_type1_exact}}
 }
 \author{
 Thomas Debray \email{tdebray@fromdatatowisdom.com}

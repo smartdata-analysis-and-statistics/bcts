@@ -24,9 +24,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// singlearm_beta_power_exact
+List singlearm_beta_power_exact(double p_t, int n_t, double M, double threshold, std::string prior, double a_base, double b_base);
+RcppExport SEXP _bcts_singlearm_beta_power_exact(SEXP p_tSEXP, SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP priorSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type p_t(p_tSEXP);
+    Rcpp::traits::input_parameter< int >::type n_t(n_tSEXP);
+    Rcpp::traits::input_parameter< double >::type M(MSEXP);
+    Rcpp::traits::input_parameter< double >::type threshold(thresholdSEXP);
+    Rcpp::traits::input_parameter< std::string >::type prior(priorSEXP);
+    Rcpp::traits::input_parameter< double >::type a_base(a_baseSEXP);
+    Rcpp::traits::input_parameter< double >::type b_base(b_baseSEXP);
+    rcpp_result_gen = Rcpp::wrap(singlearm_beta_power_exact(p_t, n_t, M, threshold, prior, a_base, b_base));
+    return rcpp_result_gen;
+END_RCPP
+}
 // singlearm_beta_power
-List singlearm_beta_power(int B, double p_t, int n_t, double M, double threshold, std::string prior, double a_base, double b_base, int n_draws, bool show_progress);
-RcppExport SEXP _bcts_singlearm_beta_power(SEXP BSEXP, SEXP p_tSEXP, SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP priorSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP, SEXP n_drawsSEXP, SEXP show_progressSEXP) {
+List singlearm_beta_power(int B, double p_t, int n_t, double M, double threshold, std::string prior, double a_base, double b_base, bool show_progress);
+RcppExport SEXP _bcts_singlearm_beta_power(SEXP BSEXP, SEXP p_tSEXP, SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP priorSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -38,15 +55,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type prior(priorSEXP);
     Rcpp::traits::input_parameter< double >::type a_base(a_baseSEXP);
     Rcpp::traits::input_parameter< double >::type b_base(b_baseSEXP);
-    Rcpp::traits::input_parameter< int >::type n_draws(n_drawsSEXP);
     Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
-    rcpp_result_gen = Rcpp::wrap(singlearm_beta_power(B, p_t, n_t, M, threshold, prior, a_base, b_base, n_draws, show_progress));
+    rcpp_result_gen = Rcpp::wrap(singlearm_beta_power(B, p_t, n_t, M, threshold, prior, a_base, b_base, show_progress));
     return rcpp_result_gen;
 END_RCPP
 }
 // singlearm_beta_type1
-List singlearm_beta_type1(int B, int n_t, double M, double threshold, std::string prior, double a_base, double b_base, int n_draws, bool show_progress);
-RcppExport SEXP _bcts_singlearm_beta_type1(SEXP BSEXP, SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP priorSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP, SEXP n_drawsSEXP, SEXP show_progressSEXP) {
+List singlearm_beta_type1(int B, int n_t, double M, double threshold, std::string prior, double a_base, double b_base, bool show_progress);
+RcppExport SEXP _bcts_singlearm_beta_type1(SEXP BSEXP, SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP priorSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -57,17 +73,35 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type prior(priorSEXP);
     Rcpp::traits::input_parameter< double >::type a_base(a_baseSEXP);
     Rcpp::traits::input_parameter< double >::type b_base(b_baseSEXP);
-    Rcpp::traits::input_parameter< int >::type n_draws(n_drawsSEXP);
     Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
-    rcpp_result_gen = Rcpp::wrap(singlearm_beta_type1(B, n_t, M, threshold, prior, a_base, b_base, n_draws, show_progress));
+    rcpp_result_gen = Rcpp::wrap(singlearm_beta_type1(B, n_t, M, threshold, prior, a_base, b_base, show_progress));
+    return rcpp_result_gen;
+END_RCPP
+}
+// singlearm_beta_type1_exact
+List singlearm_beta_type1_exact(int n_t, double M, double threshold, std::string prior, double a_base, double b_base, double p_null);
+RcppExport SEXP _bcts_singlearm_beta_type1_exact(SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP priorSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP, SEXP p_nullSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type n_t(n_tSEXP);
+    Rcpp::traits::input_parameter< double >::type M(MSEXP);
+    Rcpp::traits::input_parameter< double >::type threshold(thresholdSEXP);
+    Rcpp::traits::input_parameter< std::string >::type prior(priorSEXP);
+    Rcpp::traits::input_parameter< double >::type a_base(a_baseSEXP);
+    Rcpp::traits::input_parameter< double >::type b_base(b_baseSEXP);
+    Rcpp::traits::input_parameter< double >::type p_null(p_nullSEXP);
+    rcpp_result_gen = Rcpp::wrap(singlearm_beta_type1_exact(n_t, M, threshold, prior, a_base, b_base, p_null));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
     {"_bcts_beta_prob_gt", (DL_FUNC) &_bcts_beta_prob_gt, 4},
-    {"_bcts_singlearm_beta_power", (DL_FUNC) &_bcts_singlearm_beta_power, 10},
-    {"_bcts_singlearm_beta_type1", (DL_FUNC) &_bcts_singlearm_beta_type1, 9},
+    {"_bcts_singlearm_beta_power_exact", (DL_FUNC) &_bcts_singlearm_beta_power_exact, 7},
+    {"_bcts_singlearm_beta_power", (DL_FUNC) &_bcts_singlearm_beta_power, 9},
+    {"_bcts_singlearm_beta_type1", (DL_FUNC) &_bcts_singlearm_beta_type1, 8},
+    {"_bcts_singlearm_beta_type1_exact", (DL_FUNC) &_bcts_singlearm_beta_type1_exact, 7},
     {NULL, NULL, 0}
 };
 

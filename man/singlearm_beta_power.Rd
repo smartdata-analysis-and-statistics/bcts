@@ -6,7 +6,7 @@
 \title{Compute p-values for a t-distribution with Fixed Degrees of Freedom}
 \usage{
 singlearm_beta_power(
-  B,
+  B = 10000,
   p_t,
   n_t,
   M,
@@ -14,12 +14,12 @@ singlearm_beta_power(
   prior = "flat",
   a_base = 1,
   b_base = 1,
-  n_draws = 2000,
-  show_progress = TRUE
+  show_progress = TRUE,
+  method = c("exact", "simulate")
 )
 
 singlearm_beta_power(
-  B,
+  B = 10000,
   p_t,
   n_t,
   M,
@@ -27,12 +27,12 @@ singlearm_beta_power(
   prior = "flat",
   a_base = 1,
   b_base = 1,
-  n_draws = 2000,
-  show_progress = TRUE
+  show_progress = TRUE,
+  method = c("exact", "simulate")
 )
 }
 \arguments{
-\item{B}{Number of trial simulations.}
+\item{B}{Number of trial simulations (used only if \code{method = "simulate"}).}
 
 \item{p_t}{True response probability.}
 
@@ -44,13 +44,13 @@ singlearm_beta_power(
 
 \item{prior}{Prior type: "flat" or "beta".}
 
-\item{a_base}{Alpha of Beta prior (only used if prior = "beta").}
+\item{a_base}{Alpha of Beta prior (only used if \code{prior = "beta"}).}
 
-\item{b_base}{Beta of Beta prior (only used if prior = "beta").}
+\item{b_base}{Beta of Beta prior (only used if \code{prior = "beta"}).}
 
-\item{n_draws}{Number of posterior samples per trial.}
+\item{show_progress}{Show progress bar? (only relevant for simulation).}
 
-\item{show_progress}{Show progress bar?}
+\item{method}{Either \code{"simulate"} (default) or \code{"exact"}.}
 }
 \value{
 A list with: estimate (power), mc_se, successes, B.
@@ -62,11 +62,24 @@ Simulates a single-arm binomial trial with a conjugate Beta prior,
 and computes the Bayesian power - the proportion of trials where the posterior
 probability that the response rate exceeds a threshold \code{M} is greater than or equal
 to a specified decision threshold.
+
+Computes the Bayesian power for a single-arm binomial trial
+using either simulation or exact analytic summation over all possible outcomes.
 }
 \examples{
 singlearm_beta_power(
   B = 1000, p_t = 0.75, n_t = 35, M = 0.60,
-  threshold = 0.95, prior = "flat", n_draws = 2000
+  threshold = 0.95, prior = "flat"
+)
+
+singlearm_beta_power(
+  B = 1000, p_t = 0.75, n_t = 35, M = 0.60,
+  threshold = 0.95, prior = "flat", method = "simulate"
+)
+
+singlearm_beta_power(
+  p_t = 0.75, n_t = 35, M = 0.60,
+  threshold = 0.95, prior = "flat", method = "exact"
 )
 
 }

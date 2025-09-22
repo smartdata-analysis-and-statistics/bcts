@@ -1,21 +1,64 @@
-#' Simulate Bayesian Type-I error for a single-arm binomial trial (via Rcpp)
+#' Estimate Bayesian Type-I Error for a Single-Arm Binomial Trial
 #'
-#' @param B Number of trial simulations.
-#' @param n_t Sample size.
-#' @param M Decision threshold (also used as null hypothesis value).
-#' @param threshold Posterior probability threshold (e.g. 0.95).
-#' @param prior Prior type: "flat" or "beta".
-#' @param a_base Alpha of Beta prior (only used if prior = "beta").
-#' @param b_base Beta of Beta prior (only used if prior = "beta").
-#' @param n_draws Number of posterior samples per trial.
-#' @param show_progress Show progress bar?
+#' @description Computes the Bayesian Type-I error for a single-arm binomial trial
+#' using a conjugate Beta prior. You can choose between a simulation-based approach
+#' or an exact summation over all possible outcomes under the null hypothesis.
 #'
-#' @return A list with `estimate` (type-I error), `mc_se`, `rejections`, and `B`.
+#' By default, the null hypothesis assumes \code{p_null = M} (i.e., testing at the boundary),
+#' but for a more conservative frequentist setting, you may specify \code{p_null < M}.
+#'
+#' @param B Integer. Number of simulations (only used if \code{method = "simulate"}).
+#' @param n_t Integer. Sample size of the treatment arm.
+#' @param M Numeric. Decision threshold (also used as null value if \code{p_null} not specified).
+#' @param threshold Numeric. Posterior probability threshold for declaring success, e.g., \code{0.95}.
+#' @param prior Character string. Either \code{"flat"} (Beta(1,1)) or \code{"beta"}.
+#' @param a_base Numeric. Alpha parameter of the Beta prior (used only if \code{prior = "beta"}).
+#' @param b_base Numeric. Beta parameter of the Beta prior (used only if \code{prior = "beta"}).
+#' @param p_null Optional numeric. True response rate under the null hypothesis (default is \code{M}).
+#' Only used when \code{method = "exact"}.
+#' @param n_draws Ignored. Kept for backward compatibility.
+#' @param show_progress Logical. Show progress bar during simulation (only relevant for \code{method = "simulate"}).
+#' @param method Character. Either \code{"exact"} (default) or \code{"simulate"}.
+#'
+#' @return A named list with:
+#' \describe{
+#'   \item{\code{estimate}}{Estimated Type-I error rate.}
+#'   \item{\code{mc_se}}{Monte Carlo standard error (NA for exact).}
+#'   \item{\code{rejections}}{Number of rejections (NA for exact).}
+#'   \item{\code{B}}{Number of simulations (NA for exact).}
+#' }
+#'
+#' @examples
+#' # Simulated Type-I error at boundary (p_null = M)
+#' singlearm_beta_type1(B = 10000, n_t = 40, M = 0.65, threshold = 0.9, method = "simulate")
+#'
+#' # Exact Type-I error at boundary (p_null = M)
+#' singlearm_beta_type1(n_t = 40, M = 0.65, threshold = 0.9, method = "exact")
+#'
+#' # Exact Type-I error with p_null < M (frequentist-style)
+#' singlearm_beta_type1(n_t = 40, M = 0.65, threshold = 0.9, method = "exact", p_null = 0.60)
+#'
+#' @seealso \code{\link{singlearm_beta_power}}, \code{\link{singlearm_beta_type1_exact}}
 #'
 #' @export
-singlearm_beta_type1 <- function(B, n_t, M, threshold,
+singlearm_beta_type1 <- function(B = 10000, n_t, M, threshold,
                                  prior = "flat", a_base = 1, b_base = 1,
-                                 n_draws = 2000, show_progress = TRUE) {
-  .Call(`_bcts_singlearm_beta_type1`, B, n_t, M, threshold,
-        prior, a_base, b_base, n_draws, show_progress)
+                                 p_null = NULL,
+                                 n_draws = 2000,  # ignored
+                                 show_progress = TRUE,
+                                 method = c("exact", "simulate")) {
+  method <- match.arg(method)
+
+  if (method == "simulate") {
+    .Call(`_bcts_singlearm_beta_type1`,
+          B, n_t, M, threshold,
+          prior, a_base, b_base, show_progress)
+  } else {
+    # Default p_null = M if not specified
+    if (is.null(p_null)) p_null <- M
+
+    .Call(`_bcts_singlearm_beta_type1_exact`,
+          n_t, M, threshold,
+          prior, a_base, b_base, p_null)
+  }
 }
