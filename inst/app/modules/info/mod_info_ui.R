@@ -27,12 +27,20 @@ mod_info_server <- function(id) {
 
     ver <- as.character(utils::packageVersion("bcts"))
     date <- utils::packageDescription("bcts")$Date %||% Sys.Date()
+    desc <- utils::packageDescription("bcts")
+
+    author_raw <- desc$Author %||% "Unknown"
+
+    # Clean up ORCID formatting (optional)
+    author_clean <- gsub("\\s*\\(ORCID:[^\\)]*\\)", "", author_raw)  # remove ORCID line
+    author_clean <- gsub("\\s+", " ", author_clean)  # remove excess whitespace
 
     output$version_text <- renderText({
-      paste(
-        "bcts version:", ver, "\nBuild date:", date,
-        "\nR version:", R.version.string,
-        "\nPlatform:", R.version$platform
+      paste0(
+        "bcts version: ", ver, " (", date, ")",
+        "\nAuthor: ", author_clean,
+        "\nR version: ", R.version.string,
+        "\nPlatform: ", R.version$platform
       )
     })
   })
