@@ -194,14 +194,6 @@ ui <- navbarPage(
           ),
 
           sat_decision_criteria_ui("crit_sa"),
-
-
-
-          numericInput("B_sa", "Number of simulations", value = 1000, min = 100, step = 100),
-          numericInput("ndraws_sa", "Posterior draws per simulation", value = 2000, min = 500, step = 100),
-          numericInput("seed_sa", "Random seed (optional)", value = 123, min = 1, step = 1),
-
-          actionButton("run_sa", "Run single-arm simulation", class = "btn-primary")
         ),
 
         mainPanel(
@@ -383,7 +375,7 @@ server <- function(input, output, session) {
     pc_current = reactive(input$pc)            # for pre-filling the range nicely
   )
 
-  observeEvent(input$run_sa, {
+  sa_results <- reactive({
     req(input$pt_sa, input$nt_sa,
         input[["crit_sa-M_sa"]],
         input[["crit_sa-gamma_sa"]])
@@ -400,56 +392,53 @@ server <- function(input, output, session) {
     M <- input[["crit_sa-M_sa"]] / 100
     gamma <- input[["crit_sa-gamma_sa"]] / 100
 
-    withProgress(message = "Running single-arm simulations...", {
-      power_res <- bcts::singlearm_beta_power(
-        B = B,
-        p_t = pt,
-        n_t = input$nt_sa,
-        M = M,
-        threshold = gamma,
-        prior = prior_type,
-        a_base = a_base,
-        b_base = b_base,
-        #n_draws = n_draws,
-        method = "exact",
-        show_progress = FALSE
-      )
+    power_res <- bcts::singlearm_beta_power(
+      B = B,
+      p_t = pt,
+      n_t = input$nt_sa,
+      M = M,
+      threshold = gamma,
+      prior = prior_type,
+      a_base = a_base,
+      b_base = b_base,
+      method = "exact",
+      show_progress = FALSE
+    )
 
-      type1_res <- bcts::singlearm_beta_type1(
-        B = B,
-        n_t = input$nt_sa,
-        M = M,
-        threshold = gamma,
-        prior = prior_type,
-        a_base = a_base,
-        b_base = b_base,
-        n_draws = n_draws,
-        show_progress = FALSE
-      )
+    type1_res <- bcts::singlearm_beta_type1(
+      B = B,
+      n_t = input$nt_sa,
+      M = M,
+      threshold = gamma,
+      prior = prior_type,
+      a_base = a_base,
+      b_base = b_base,
+      n_draws = n_draws,
+      method = "exact",
+      show_progress = FALSE
+    )
 
-      output$sa_summary <- renderPrint({
-        cat("POWER ANALYSIS\n")
-        cat(sprintf("Estimated power: %.2f%%\n", 100 * power_res$estimate))
-        cat(sprintf("MC standard error: %.2f%%\n", 100 * power_res$mc_se))
-        cat(sprintf("Successes: %d out of %d simulations\n\n", power_res$successes, power_res$B))
+    list(power = power_res, type1 = type1_res)
+  })
 
-        cat("TYPE-I ERROR ANALYSIS\n")
-        cat(sprintf("Estimated Type-I error: %.2f%%\n", 100 * type1_res$estimate))
-        cat(sprintf("MC standard error: %.2f%%\n", 100 * type1_res$mc_se))
-        cat(sprintf("False positives: %d out of %d simulations\n", type1_res$successes, type1_res$B))
-      })
+  output$sa_summary <- renderPrint({
+    res <- sa_results()
+    power_res <- res$power
+    type1_res <- res$type1
 
-      output$sa_power_plot <- renderPlot({
-        barplot(
-          height = c(100 * power_res$estimate, 100 * type1_res$estimate),
-          names.arg = c("Power", "Type-I error"),
-          ylim = c(0, 100),
-          col = c("#4682B4", "#D2691E"),
-          ylab = "Estimate (%)",
-          main = "Single-Arm Trial: Power vs Type-I Error"
-        )
-      })
-    })
+    cat("POWER ANALYSIS\n")
+    cat(sprintf("Estimated power: %.2f%%\n", 100 * power_res$estimate))
+    cat(sprintf("MC standard error: %.2f%%\n", 100 * power_res$mc_se %||% NA_real_))
+    cat(sprintf("Successes: %d out of %d simulations\n\n",
+                power_res$successes %||% NA_integer_,
+                power_res$B %||% NA_integer_))
+
+    cat("TYPE-I ERROR ANALYSIS\n")
+    cat(sprintf("Estimated Type-I error: %.2f%%\n", 100 * type1_res$estimate))
+    cat(sprintf("MC standard error: %.2f%%\n", 100 * type1_res$mc_se %||% NA_real_))
+    cat(sprintf("False positives: %d out of %d simulations\n",
+                type1_res$successes %||% NA_integer_,
+                type1_res$B %||% NA_integer_))
   })
 
 }
