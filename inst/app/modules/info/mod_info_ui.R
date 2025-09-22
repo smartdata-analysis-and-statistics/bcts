@@ -25,7 +25,11 @@ mod_info_server <- function(id) {
     ns <- session$ns
 
     output$version_text <- renderText({
-      paste("bcts version:", as.character(utils::packageVersion("bcts")))
+      paste(
+        "bcts version:", as.character(utils::packageVersion("bcts")),
+        "\nR version:", R.version.string,
+        "\nPlatform:", R.version$platform
+      )
     })
   })
 }
