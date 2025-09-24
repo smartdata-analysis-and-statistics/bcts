@@ -3,6 +3,7 @@
 
 # ---- Load packages that the APP needs ----
 library(shiny)
+library(shinyjs)
 library(ggplot2)
 library(bcts)
 
@@ -322,6 +323,7 @@ server <- function(input, output, session) {
     "sens",
     sim        = sim,                           # your eventReactive from primary analysis
     pt         = reactive(input$pt / 100),
+    pc         = reactive(input$pc / 100),
     nt         = reactive(input$nt),
     nc         = reactive(input$nc),
     M          = reactive(input$M / 100),

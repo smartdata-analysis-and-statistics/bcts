@@ -155,3 +155,61 @@ singlearm_beta_type1_exact <- function(n_t, M, threshold, prior = "flat", a_base
     .Call(`_bcts_singlearm_beta_type1_exact`, n_t, M, threshold, prior, a_base, b_base, p_null)
 }
 
+#' Estimate Power for Bayesian RCT Using Beta-Binomial Conjugate Model (C++)
+#'
+#' Performs Monte Carlo simulation to estimate the statistical power of a
+#' Bayesian randomized controlled trial (RCT) using conjugate Beta-Binomial
+#' models for the control and treatment arms. The function supports flat priors
+#' and power priors on the control arm, and allows for fully customizable
+#' baseline Beta prior parameters for both arms.
+#'
+#' A trial is declared successful if the posterior probability
+#' \eqn{Pr(\theta_t - \theta_c > M \mid \text{data}) \ge \gamma}.
+#'
+#' @param B Integer. Number of simulated trials.
+#' @param p_c,p_t Numeric in \[0, 1\]. True response probabilities in the control and treatment arms.
+#' @param n_c,n_t Integers. Sample sizes in the control and treatment arms.
+#' @param M Numeric. Margin on the risk-difference scale:
+#'   - Negative for non-inferiority,
+#'   - Zero for equivalence,
+#'   - Positive for superiority.
+#' @param threshold Numeric in (0, 1). Posterior probability threshold \eqn{\gamma}.
+#' @param prior Character. Type of prior to use:
+#'   - `"flat"`: independent Beta priors for both arms,
+#'   - `"power"`: power prior on the control arm, flat prior on treatment.
+#' @param prior_args List of prior hyperparameters. The following elements are supported:
+#'   - `a0`: Discount factor for historical control data (only used if `prior = "power"`).
+#'   - `y_0`, `n_0`: Number of responses and total patients in the historical control data.
+#'   - `a_base_c`, `b_base_c`: Shape parameters of the Beta prior for the control arm.
+#'   - `a_base_t`, `b_base_t`: Shape parameters of the Beta prior for the treatment arm.
+#'     - Defaults for all `a_base_*` and `b_base_*` values are 1 (i.e., flat prior).
+#' @param n_draws Integer. Number of posterior draws per trial for estimating the probability.
+#' @param show_progress Logical. Show progress bar in the console.
+#'
+#' @return A logical vector of length `B`, indicating for each trial whether the decision
+#' criterion was met (i.e., trial declared successful).
+#'
+#' @details This function uses Rcpp and vectorized binomial simulation to increase speed.
+#' Posterior samples are drawn from Beta distributions parameterized using either flat priors
+#' or power priors (for control) combined with observed trial data.
+#'
+#' @examples
+#' prior_args <- list(
+#'   a0 = 0.5, y_0 = 20, n_0 = 30,
+#'   a_base_c = 1, b_base_c = 1,
+#'   a_base_t = 2, b_base_t = 2
+#' )
+#' decisions <- rct_power_beta_binom_cpp_vec(
+#'   B = 1000, p_c = 0.8, p_t = 0.8,
+#'   n_c = 25, n_t = 25,
+#'   M = -0.1, threshold = 0.9,
+#'   prior = "power", prior_args = prior_args,
+#'   n_draws = 2000, show_progress = FALSE
+#' )
+#' mean(decisions)  # Estimated power
+#'
+#' @export
+rct_power_beta_binom_cpp_vec <- function(B, p_c, p_t, n_c, n_t, M, threshold, prior, prior_args, n_draws, show_progress = TRUE) {
+    .Call(`_bcts_rct_power_beta_binom_cpp_vec`, B, p_c, p_t, n_c, n_t, M, threshold, prior, prior_args, n_draws, show_progress)
+}
+

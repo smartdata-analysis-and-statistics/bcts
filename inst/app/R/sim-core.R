@@ -29,10 +29,11 @@ run_all_oc <- function(pt, nt, pc, nc, M, mode, gamma, alpha, calibrate_on,
     n_draws = ndraws, show_progress = FALSE
   )
 
-  pw <- bcts_power_betaBinom_conj(
+  pw <- rct_beta_power(
     B = B, p_c = pc, p_t = pt, n_c = nc, n_t = nt, M = M,
     threshold = gamma_used, prior = prior, prior_args = prior_args,
-    n_draws = ndraws, seed = seed, show_progress = FALSE
+    n_draws = ndraws, seed = seed, show_progress = FALSE,
+    method = "cpp"
   )
 
   list(

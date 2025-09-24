@@ -38,9 +38,6 @@
 #' )
 #' res$estimate
 #' res$ci
-#'
-#' @seealso [bcts_type1_betaBinom_conj()], [bcts_calibrate_betaBinom_conj()]
-#' @export
 bcts_power_betaBinom_conj <- function(B = 1000, p_c, p_t, n_c, n_t, M,
                                          threshold,
                                          prior = c("flat","power"),
@@ -130,10 +127,7 @@ bcts_power_betaBinom_conj <- function(B = 1000, p_c, p_t, n_c, n_t, M,
 #'   prior     = "flat",
 #'   n_draws   = 200
 #' )
-#'
-#' @seealso [bcts_calibrate_betaBinom_conj()], [bcts_power_betaBinom_conj()]
 #' @family conjugate-BetaBinom
-#' @export
 bcts_type1_betaBinom_conj <- function(B = 2000, p_c, M, n_c, n_t,
                                       threshold, prior = c("flat","power"),
                                       prior_args = list(),

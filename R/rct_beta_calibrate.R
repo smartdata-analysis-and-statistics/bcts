@@ -21,6 +21,7 @@
 #' @param seed RNG seed for reproducibility.
 #' @param show_progress Logical. Show text progress bars during simulation.
 #' @param verbose Logical. Print iteration messages during calibration.
+#' @param method Character. Method for estimation. Either `"simulate"` or `"cpp"`.
 #'
 #' @return An object of class `"bayesNI"` with components:
 #' - `calibration`: list from [bcts_calibrate_betaBinom_conj()]
@@ -28,23 +29,24 @@
 #' - `settings`: list of all input parameters (echoed)
 #'
 #' @seealso [bcts_calibrate_betaBinom_conj()],
-#'   [bcts_power_betaBinom_conj()],
+#'   [rct_beta_power()],
 #'   [bcts_type1_betaBinom_conj()]
 #' @family conjugate-NI
 #'
 #' @examples
 #' \donttest{
-#' res <- bcts_run_betaBinom_conj(
+#' res <- rct_beta_calibrate(
 #'   alpha = 0.10, p_c = .85, p_t = .85,
 #'   n_c = 29, n_t = 29, NI_margin = -0.20,
-#'   prior = "flat", B_cal = 1000, B_power = 500
+#'   prior = "flat", B_cal = 1000, B_power = 500,
+#'   method = "cpp
 #' )
 #' res$calibration$gamma
 #' res$power
 #' }
 #'
 #' @export
-bcts_run_betaBinom_conj <- function(alpha = 0.10,
+rct_beta_calibrate <- function(alpha = 0.10,
                               p_c = 0.85, p_t = 0.85,
                               n_c = 29, n_t = 29,
                               NI_margin = -0.20,
@@ -54,8 +56,11 @@ bcts_run_betaBinom_conj <- function(alpha = 0.10,
                               n_draws = 2000,
                               tol = 0.002,
                               seed = 123,
-                              show_progress = FALSE, verbose = TRUE) {
+                              show_progress = FALSE, verbose = TRUE,
+                              method = c("cpp", "simulate")) {
   prior <- match.arg(prior)
+
+  method <- match.arg(method)
 
   # 1) Calibrate gamma using conjugate machinery
   cal <- bcts_calibrate_betaBinom_conj(alpha = alpha, p_c = p_c, M = NI_margin,
@@ -66,12 +71,14 @@ bcts_run_betaBinom_conj <- function(alpha = 0.10,
                               show_progress = show_progress, verbose = verbose)
 
   # 2) Simulate Bayesian "power" at calibrated gamma
-  power <- bcts_power_betaBinom_conj(B = B_power, p_c = p_c, p_t = p_t,
-                                     n_c = n_c, n_t = n_t, M = NI_margin,
-                                     threshold = cal$gamma,
-                                     prior = prior, prior_args = prior_args,
-                                     n_draws = n_draws,
-                                     seed = seed, show_progress = show_progress)
+  power <- rct_beta_power(B = B_power, p_c = p_c, p_t = p_t,
+                          n_c = n_c, n_t = n_t, M = NI_margin,
+                          threshold = cal$gamma,
+                          prior = prior, prior_args = prior_args,
+                          n_draws = n_draws,
+                          show_progress = show_progress,
+                          method = method, seed = seed)
+
 
   out <- list(
     calibration = cal,

@@ -95,6 +95,27 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rct_power_beta_binom_cpp_vec
+LogicalVector rct_power_beta_binom_cpp_vec(int B, double p_c, double p_t, int n_c, int n_t, double M, double threshold, std::string prior, List prior_args, int n_draws, bool show_progress);
+RcppExport SEXP _bcts_rct_power_beta_binom_cpp_vec(SEXP BSEXP, SEXP p_cSEXP, SEXP p_tSEXP, SEXP n_cSEXP, SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP priorSEXP, SEXP prior_argsSEXP, SEXP n_drawsSEXP, SEXP show_progressSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type B(BSEXP);
+    Rcpp::traits::input_parameter< double >::type p_c(p_cSEXP);
+    Rcpp::traits::input_parameter< double >::type p_t(p_tSEXP);
+    Rcpp::traits::input_parameter< int >::type n_c(n_cSEXP);
+    Rcpp::traits::input_parameter< int >::type n_t(n_tSEXP);
+    Rcpp::traits::input_parameter< double >::type M(MSEXP);
+    Rcpp::traits::input_parameter< double >::type threshold(thresholdSEXP);
+    Rcpp::traits::input_parameter< std::string >::type prior(priorSEXP);
+    Rcpp::traits::input_parameter< List >::type prior_args(prior_argsSEXP);
+    Rcpp::traits::input_parameter< int >::type n_draws(n_drawsSEXP);
+    Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
+    rcpp_result_gen = Rcpp::wrap(rct_power_beta_binom_cpp_vec(B, p_c, p_t, n_c, n_t, M, threshold, prior, prior_args, n_draws, show_progress));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_bcts_beta_prob_gt", (DL_FUNC) &_bcts_beta_prob_gt, 4},
@@ -102,6 +123,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_bcts_singlearm_beta_power", (DL_FUNC) &_bcts_singlearm_beta_power, 9},
     {"_bcts_singlearm_beta_type1", (DL_FUNC) &_bcts_singlearm_beta_type1, 8},
     {"_bcts_singlearm_beta_type1_exact", (DL_FUNC) &_bcts_singlearm_beta_type1_exact, 7},
+    {"_bcts_rct_power_beta_binom_cpp_vec", (DL_FUNC) &_bcts_rct_power_beta_binom_cpp_vec, 11},
     {NULL, NULL, 0}
 };
 
