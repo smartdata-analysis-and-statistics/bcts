@@ -39,8 +39,8 @@ mod_singlearm_ui <- function(id) {
         ),
 
         mainPanel(
-          h4("Narrative summary"),
-          textOutput(ns("sa_narrative_text")),
+          h4("Design Summary"),
+          htmlOutput(ns("sa_narrative_text")),
           verbatimTextOutput(ns("sa_summary")),
           plotOutput(ns("sa_power_plot"))
         )
@@ -138,7 +138,7 @@ mod_singlearm_server <- function(id) {
 
       design_txt <- if (decision_mode == "gamma") {
         sprintf(
-          "This design evaluates whether the treatment works well enough by checking if its response rate is above %.1f%% in most simulated trials (at least %.0f%% of the time).",
+          "This single-arm design determines treatment efficacy by testing whether the posterior probability that the response rate exceeds %.0f%% is at least %.0f%%.",
           100 * M, 100 * gamma
         )
       } else {
@@ -149,26 +149,28 @@ mod_singlearm_server <- function(id) {
       }
 
       arm_txt <- sprintf(
-        "The trial includes %s patients, with an expected success rate of %.1f%%.",
+        "The trial includes %s patients, with an assumed true response rate of %.0f%%.",
         nt, 100 * pt
       )
 
       prior_txt <- switch(
         prior_type,
-        "flat" = "The analysis uses a flat prior, meaning all possible success rates are considered equally likely before seeing any data.",
+        "flat" = "The Bayesian analysis uses a flat prior, treating all response rates between 0% and 100% as equally likely before observing any data.",
         "beta" = sprintf(
-          "The analysis uses a Beta prior with values a = %.2f and b = %.2f, which reflects prior beliefs about likely success rates.",
+          "The Bayesian analysis uses a Beta prior with shape parameters a = %.2f and b = %.2f, reflecting prior beliefs about likely response rates.",
           a_base, b_base
         ),
         "unknown prior type"
       )
 
-      sim_txt <- sprintf(
-        "The results are based on %s simulated trials, each using %s draws from the posterior.",
-        fmt_int(B), fmt_int(ndraws)
-      )
+      method_txt <- "Once data are observed, Bayesian inference is performed using a Beta–Binomial model. Because the Beta distribution is conjugate to the Binomial likelihood, the posterior distribution also follows a Beta distribution. This allows direct computation of the probability that the true response rate exceeds the pre-specified margin."
 
-      paste(design_txt, arm_txt, prior_txt, sim_txt, sep = "\n\n")
+      HTML(paste(
+        "<p>", design_txt, "</p>",
+        "<p>", arm_txt, "</p>",
+        "<p>", prior_txt, "</p>",
+        "<p>", method_txt, "</p>"
+      ))
     })
 
     # Text summary output
