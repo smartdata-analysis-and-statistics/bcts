@@ -64,6 +64,11 @@ mod_singlearm_server <- function(id) {
           input[["crit_sa-M_sa"]],
           input[["crit_sa-gamma_sa"]])
 
+      pt <- input$pt_sa / 100
+      nt <- input$nt_sa
+      M <- input[["crit_sa-M_sa"]] / 100
+      gamma <- input[["crit_sa-gamma_sa"]] / 100
+
       prior_type <- input$prior_sa
       a_base <- if (prior_type == "beta") input$abase_sa else 1
       b_base <- if (prior_type == "beta") input$bbase_sa else 1
@@ -72,14 +77,11 @@ mod_singlearm_server <- function(id) {
       n_draws <- input$ndraws_sa
       seed <- input$seed_sa
 
-      pt <- input$pt_sa / 100
-      M <- input[["crit_sa-M_sa"]] / 100
-      gamma <- input[["crit_sa-gamma_sa"]] / 100
-
+      # Bayesian power
       power_res <- bcts::singlearm_beta_power(
         B = B,
         p_t = pt,
-        n_t = input$nt_sa,
+        n_t = nt,
         M = M,
         threshold = gamma,
         prior = prior_type,
@@ -89,9 +91,10 @@ mod_singlearm_server <- function(id) {
         show_progress = FALSE
       )
 
+      # Bayesian type-I error
       type1_res <- bcts::singlearm_beta_type1(
         B = B,
-        n_t = input$nt_sa,
+        n_t = nt,
         M = M,
         threshold = gamma,
         prior = prior_type,
@@ -102,8 +105,22 @@ mod_singlearm_server <- function(id) {
         show_progress = FALSE
       )
 
-      list(power = power_res, type1 = type1_res)
+      # Frequentist power
+      crit_val <- qbinom(gamma, size = nt, prob = M) + 1
+      freq_power <- 1 - pbinom(crit_val - 1, size = nt, prob = pt)
+
+
+      # Frequentist type-I error
+      freq_type1 <- 1 - gamma
+
+      list(
+        power = power_res,
+        type1 = type1_res,
+        freq_power = freq_power,
+        freq_type1 = freq_type1
+      )
     })
+
 
     # --- Render narrative directly ---
     output$sa_narrative_text <- renderText({
@@ -159,20 +176,18 @@ mod_singlearm_server <- function(id) {
       res <- sa_results()
       power_res <- res$power
       type1_res <- res$type1
+      freq_power <- res$freq_power
+      freq_type1 <- res$freq_type1
 
-      cat("POWER ANALYSIS\n")
+      cat("BAYESIAN ANALYSIS\n")
       cat(sprintf("Estimated power: %.2f%%\n", 100 * power_res$estimate))
-      cat(sprintf("MC standard error: %.2f%%\n", 100 * power_res$mc_se %||% NA_real_))
-      cat(sprintf("Successes: %d out of %d simulations\n\n",
-                  power_res$successes %||% NA_integer_,
-                  power_res$B %||% NA_integer_))
-
-      cat("TYPE-I ERROR ANALYSIS\n")
       cat(sprintf("Estimated Type-I error: %.2f%%\n", 100 * type1_res$estimate))
-      cat(sprintf("MC standard error: %.2f%%\n", 100 * type1_res$mc_se %||% NA_real_))
-      cat(sprintf("False positives: %d out of %d simulations\n",
-                  type1_res$successes %||% NA_integer_,
-                  type1_res$B %||% NA_integer_))
+
+      cat("\n")
+
+      cat("FREQUENTIST COMPARISON\n")
+      cat(sprintf("Frequentist power: %.2f%%\n", 100 * freq_power))
+      cat(sprintf("Frequentist Type-I error: %.2f%%\n", 100 * freq_type1))
     })
 
   })
