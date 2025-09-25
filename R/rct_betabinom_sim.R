@@ -38,6 +38,7 @@
 #' )
 #' res$estimate
 #' res$ci
+#' @export
 bcts_power_betaBinom_conj <- function(B = 1000, p_c, p_t, n_c, n_t, M,
                                          threshold,
                                          prior = c("flat","power"),
@@ -128,6 +129,7 @@ bcts_power_betaBinom_conj <- function(B = 1000, p_c, p_t, n_c, n_t, M,
 #'   n_draws   = 200
 #' )
 #' @family conjugate-BetaBinom
+#' @export
 bcts_type1_betaBinom_conj <- function(B = 2000, p_c, M, n_c, n_t,
                                       threshold, prior = c("flat","power"),
                                       prior_args = list(),
@@ -540,67 +542,3 @@ check_alpha_bracketing <- function(calibrate_on, alpha, lower, upper, r_lo, r_hi
   invisible(TRUE)
 }
 
-#' Plot calibration trace for calibrated Bayesian NI threshold
-#'
-#' Visualizes the estimated Type-I error at different posterior thresholds
-#' during the calibration procedure.
-#'
-#' @param x Output from [bcts_calibrate_betaBinom_conj()]
-#' @param ... Not used.
-#'
-#' @return A [ggplot2::ggplot()] object.
-#' @export
-#'
-#' @examples
-#' # res <- bcts_calibrate_betaBinom_conj(...)  # Run separately
-#' # plot(res)
-plot.bcts_calibration <- function(x, ...) {
-  stopifnot(!is.null(x$trace), !is.null(x$type1))
-
-  tr     <- x$trace
-  alpha  <- x$alpha
-  gamma  <- x$gamma
-  type1  <- x$type1
-
-  # Small vertical offset above CI
-  offset <- 0.01
-
-  ggplot2::ggplot(tr, ggplot2::aes(x = .data$gamma_try, y = .data$type1)) +
-    ggplot2::geom_errorbar(
-      ggplot2::aes(ymin = .data$ci_lower, ymax = .data$ci_upper),
-      width = 0.002, alpha = 0.4
-    ) +
-    ggplot2::geom_point(size = 2) +
-    ggplot2::geom_line() +
-    ggplot2::geom_point(
-      x = gamma,
-      y = type1["estimate"],
-      color = "blue",
-      size = 3
-    ) +
-    ggplot2::annotate(
-      "text",
-      x = gamma,
-      y = type1["ci_upper"] + offset,
-      label = sprintf("gamma = %.3f\nType-I = %.1f%%",
-                      gamma, 100 * type1["estimate"]),
-      hjust = 0.5,
-      size = 3.5
-    ) +
-    ggplot2::geom_hline(
-      yintercept = alpha,
-      linetype = "dotted",
-      color = "red"
-    ) +
-    ggplot2::labs(
-      x = expression(gamma),
-      y = "Estimated Type-I error",
-      subtitle = sprintf(
-        "Calibrated gamma = %.3f after %d steps; dotted = target alpha = %.2f",
-        gamma, x$iters, alpha
-      )
-    ) +
-    ggplot2::theme_minimal(base_size = 12)+
-    ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1))+
-    ggplot2::scale_x_continuous(labels = scales::label_percent(accuracy = 1))
-}

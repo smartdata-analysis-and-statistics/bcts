@@ -1,3 +1,4 @@
+
 #' @title Single-Arm Trial UI Module
 #' @description UI for the single-arm Bayesian binomial trial tab
 #' @export
@@ -24,8 +25,11 @@ mod_singlearm_ui <- function(id) {
           selectInput(
             ns("prior_sa"),
             "Prior distribution",
-            choices = c("Flat (Beta(1,1))" = "flat",
-                        "Custom Beta prior" = "beta"),
+            choices = c(
+              "Flat (Beta(1,1))" = "flat",
+              "Jeffreys (Beta(0.5,0.5))" = "jeffreys",
+              "Custom Beta prior" = "beta"
+            ),
             selected = "flat"
           ),
 
@@ -42,7 +46,13 @@ mod_singlearm_ui <- function(id) {
           h4("Design Summary"),
           htmlOutput(ns("sa_narrative_text")),
           verbatimTextOutput(ns("sa_summary")),
-          plotOutput(ns("sa_power_plot"))
+
+          br(),
+          tabsetPanel(
+            tabPanel("Bayesian Posterior", plotOutput(ns("bayes_posterior_plot"))),
+            tabPanel("Pr(θ > M) vs y", plotOutput(ns("tail_prob_curve"))),
+            tabPanel("Frequentist Test", plotOutput(ns("freq_binom_plot")))
+          )
         )
       )
     )
@@ -70,15 +80,27 @@ mod_singlearm_server <- function(id) {
       gamma <- input[["crit_sa-gamma_sa"]] / 100
 
       prior_type <- input$prior_sa
-      a_base <- if (prior_type == "beta") input$abase_sa else 1
-      b_base <- if (prior_type == "beta") input$bbase_sa else 1
+      a_base <- switch(
+        prior_type,
+        "flat"     = 1,
+        "jeffreys" = 0.5,
+        "beta"     = input$abase_sa,
+        1
+      )
+      b_base <- switch(
+        prior_type,
+        "flat"     = 1,
+        "jeffreys" = 0.5,
+        "beta"     = input$bbase_sa,
+        1
+      )
 
       B <- input$B_sa
       n_draws <- input$ndraws_sa
       seed <- input$seed_sa
 
       # Bayesian power
-      power_res <- bcts::singlearm_beta_power(
+      power_res <- bcts::sat_betabinom_power(
         B = B,
         p_t = pt,
         n_t = nt,
@@ -92,7 +114,7 @@ mod_singlearm_server <- function(id) {
       )
 
       # Bayesian type-I error
-      type1_res <- bcts::singlearm_beta_type1(
+      type1_res <- bcts::sat_betabinom_type1(
         B = B,
         n_t = nt,
         M = M,
@@ -190,6 +212,176 @@ mod_singlearm_server <- function(id) {
       cat("FREQUENTIST COMPARISON\n")
       cat(sprintf("Frequentist power: %.2f%%\n", 100 * freq_power))
       cat(sprintf("Frequentist Type-I error: %.2f%%\n", 100 * freq_type1))
+    })
+
+    output$freq_binom_plot <- renderPlot({
+      pt <- input$pt_sa / 100
+      nt <- input$nt_sa
+      M  <- input[["crit_sa-M_sa"]] / 100
+      gamma <- input[["crit_sa-gamma_sa"]] / 100
+
+      crit_val <- qbinom(gamma, size = nt, prob = M) + 1
+
+      x_vals <- 0:nt
+      probs <- dbinom(x_vals, size = nt, prob = M)
+      barplot(probs, names.arg = x_vals, main = "Binomial Sampling Distribution",
+              xlab = "Successes", ylab = "Probability",
+              col = ifelse(x_vals >= crit_val, "red", "grey"))
+      abline(v = crit_val, col = "red", lty = 2)
+    })
+
+    output$bayes_posterior_plot <- renderPlot({
+      pt <- input$pt_sa / 100
+      nt <- input$nt_sa
+      M  <- input[["crit_sa-M_sa"]] / 100
+
+      prior_type <- input$prior_sa
+      a_base <- switch(prior_type,
+                       "flat"     = 1,
+                       "jeffreys" = 0.5,
+                       "beta"     = input$abase_sa,
+                       1)
+      b_base <- switch(prior_type,
+                       "flat"     = 1,
+                       "jeffreys" = 0.5,
+                       "beta"     = input$bbase_sa,
+                       1)
+
+      s <- round(pt * nt)
+      a_post <- a_base + s
+      b_post <- b_base + nt - s
+
+      # Compute tail probability
+      p_tail <- 1 - pbeta(M, a_post, b_post)
+      p_tail_label <- sprintf("Pr(θ > M) = %s", sprintf("%.0f%%", 100 * p_tail))
+
+      x_vals <- seq(0, 1, length.out = 500)
+      df <- data.frame(
+        theta = x_vals,
+        prior = dbeta(x_vals, a_base, b_base),
+        posterior = dbeta(x_vals, a_post, b_post)
+      )
+
+      ggplot(df, aes(x = theta)) +
+        # Fill the posterior area
+        geom_area(aes(y = posterior), fill = "firebrick", alpha = 0.4, show.legend = FALSE) +
+        # Outline for posterior
+        geom_line(aes(y = posterior, color = "Posterior"), linewidth = 1) +
+        # Dashed prior line
+        geom_line(aes(y = prior, color = "Prior"), linetype = "dashed", linewidth = 1) +
+        # Tail shading beyond margin M
+        geom_area(data = subset(df, theta >= M),
+                  aes(y = posterior), fill = "firebrick", alpha = 0.2, show.legend = FALSE) +
+        # Vertical line for M
+        geom_vline(xintercept = M, color = "red", linetype = "dashed") +
+        annotate("text", x = M, y = Inf, label = "M", vjust = 1.5, hjust = -0.2, color = "red") +
+        # Add Pr(θ > M) annotation
+        #annotate("text", x = M + 0.1, y = max(df$posterior) * 0.9,
+        #         label = p_tail_label, color = "firebrick", size = 5, fontface = "italic") +
+        scale_color_manual(values = c("Prior" = "grey40", "Posterior" = "firebrick")) +
+        labs(
+          title = "Prior and Posterior Distributions (Beta–Binomial)",
+          x = expression(theta),
+          y = "Density",
+          fill = NULL,
+          color = NULL,
+          caption = sprintf(
+            "Posterior is based on %d observed responses in %d patients and a Beta(%.1f, %.1f) prior, resulting in %s",
+            s, nt, a_base, b_base, p_tail_label
+          )
+        ) +
+        theme_minimal(base_size = 14) +
+        theme(
+          plot.caption = element_text(size = 10, face = "italic", hjust = 0),
+          legend.position = "top"
+        )
+    })
+
+    output$tail_prob_curve <- renderPlot({
+      pt <- input$pt_sa / 100  # treatment response rate
+      nt <- input$nt_sa        # sample size
+      M  <- input[["crit_sa-M_sa"]] / 100
+      gamma <- input[["crit_sa-gamma_sa"]] / 100
+
+      prior_type <- input$prior_sa
+      a_base <- switch(prior_type,
+                       "flat"     = 1,
+                       "jeffreys" = 0.5,
+                       "beta"     = input$abase_sa,
+                       1)
+      b_base <- switch(prior_type,
+                       "flat"     = 1,
+                       "jeffreys" = 0.5,
+                       "beta"     = input$bbase_sa,
+                       1)
+
+      y_vals <- 0:nt
+
+      # Compute tail probabilities for each possible y
+      pr_theta_gt_M <- 1 - pbeta(M, a_base + y_vals, b_base + (nt - y_vals))
+      exceeds_gamma <- pr_theta_gt_M > gamma
+
+      # Frequentist likelihood under true pt
+      likelihood_y <- dbinom(y_vals, size = nt, prob = pt)
+
+      # Frequentist likelihood under the null hypothesis
+      likelihood_y_type1  <- dbinom(y_vals, size = nt, prob = M)
+
+      # Bayesian power: sum of probabilities where posterior exceeds gamma
+      bayes_power <- sum(likelihood_y[exceeds_gamma])
+
+      # Bayesian type1: sum of probabilities where posterior exceeds gamma
+      bayes_type1 <- sum(likelihood_y_type1[exceeds_gamma])
+
+      df_power <- data.frame(
+        y = y_vals,
+        pr_theta_gt_M,
+        exceeds_gamma,
+        prob = likelihood_y,
+        metric = "Power"
+      )
+
+      df_type1 <- data.frame(
+        y = y_vals,
+        pr_theta_gt_M,
+        exceeds_gamma,
+        prob = likelihood_y_type1,
+        metric = "Type-I Error"
+      )
+
+      df_plot <- rbind(df_power, df_type1)
+
+      ggplot(df_plot, aes(x = y, y = pr_theta_gt_M)) +
+        geom_col(aes(fill = exceeds_gamma, alpha = prob), width = 0.8) +
+        geom_hline(yintercept = gamma, linetype = "dashed", color = "red", linewidth = 1) +
+        scale_fill_manual(values = c("TRUE" = "firebrick", "FALSE" = "grey80")) +
+        scale_alpha_continuous(range = c(0.2, 1), guide = "none") +
+        scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
+        facet_wrap(~ metric, ncol = 1)  +
+        labs(
+          title = expression("Posterior probability " * Pr(theta > M) * " across outcomes"),
+          subtitle = sprintf(
+            "Power assumes true response rate = %.0f%%; Type-I Error assumes θ = M = %.0f%%",
+            100 * pt, 100 * M
+          ),
+          caption = paste(
+            "Posterior probabilities are computed across all possible outcomes y = 0, ..., n,",
+            "using a Beta prior and Binomial likelihood.",
+            "Bar opacity reflects the likelihood of observing y given the assumed response rate.",
+            "Power is based on Pr(theta > M) under the true response rate (pt),",
+            "while Type-I error assumes theta equals the decision threshold M.",
+            sep = "\n"
+          ),
+          x = "Number of observed responses (y)",
+          y = expression("Pr(" * theta * " > M)"),
+          fill = NULL
+        ) +
+        theme_minimal(base_size = 13) +
+        theme(
+          legend.position = "none",
+          plot.caption = element_text(hjust = 0),              # 0 = left, 0.5 = center, 1 = right
+          plot.caption.position = "plot"                       # ensures caption aligns as part of the plot area
+              )
     })
 
   })

@@ -10,7 +10,7 @@ test_that("Analytic and simulated power are consistent for single-arm Beta-Binom
 
   # Analytic power
   exact_res <- .Call(
-    `_bcts_singlearm_beta_power_exact`,
+    `_bcts_sat_betabinom_power_exact`,
     p_t,        # true response rate
     n_t,        # sample size
     M,          # decision threshold
@@ -24,7 +24,7 @@ test_that("Analytic and simulated power are consistent for single-arm Beta-Binom
   # Simulated power (use large B for stability)
   set.seed(123)
   sim_res <- .Call(
-    `_bcts_singlearm_beta_power`,
+    `_bcts_sat_betabinom_power`,
     50000,          # B
     p_t,            # true response rate
     n_t,            # sample size

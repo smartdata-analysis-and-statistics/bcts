@@ -10,7 +10,7 @@ test_that("Analytic and simulated Type-I error are consistent for single-arm Bet
 
   # Exact Type-I error (no Monte Carlo)
   exact_res <- .Call(
-    `_bcts_singlearm_beta_type1_exact`,
+    `_bcts_sat_betabinom_type1_exact`,
     n_t, M, threshold,
     prior, a_base, b_base, p_null
   )
@@ -19,7 +19,7 @@ test_that("Analytic and simulated Type-I error are consistent for single-arm Bet
   # Simulated Type-I error
   set.seed(123)
   sim_res <- .Call(
-    `_bcts_singlearm_beta_type1`,
+    `_bcts_sat_betabinom_type1`,
     50000,      # B
     n_t, M, threshold,
     prior, a_base, b_base,

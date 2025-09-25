@@ -11,9 +11,12 @@
 #' @param n_t Integer. Sample size of the treatment arm.
 #' @param M Numeric. Decision threshold (also used as null value if \code{p_null} not specified).
 #' @param threshold Numeric. Posterior probability threshold for declaring success, e.g., \code{0.95}.
-#' @param prior Character string. Either \code{"flat"} (Beta(1,1)) or \code{"beta"}.
-#' @param a_base Numeric. Alpha parameter of the Beta prior (used only if \code{prior = "beta"}).
-#' @param b_base Numeric. Beta parameter of the Beta prior (used only if \code{prior = "beta"}).
+#' @param prior Prior type: one of:
+#'   - \code{"flat"} for a non-informative Beta(1,1) prior;
+#'   - \code{"jeffreys"} for the Jeffreys prior Beta(0.5, 0.5);
+#'   - \code{"beta"} for a custom Beta(\code{a_base}, \code{b_base}) prior.
+#' @param a_base Alpha of Beta prior (only used if \code{prior = "beta"}).
+#' @param b_base Beta of Beta prior (only used if \code{prior = "beta"}).
 #' @param p_null Optional numeric. True response rate under the null hypothesis (default is \code{M}).
 #' Only used when \code{method = "exact"}.
 #' @param n_draws Ignored. Kept for backward compatibility.
@@ -30,34 +33,36 @@
 #'
 #' @examples
 #' # Simulated Type-I error at boundary (p_null = M)
-#' singlearm_beta_type1(B = 10000, n_t = 40, M = 0.65, threshold = 0.9, method = "simulate")
+#' sat_betabinom_type1(B = 10000, n_t = 40, M = 0.65, threshold = 0.9, method = "simulate")
 #'
 #' # Exact Type-I error at boundary (p_null = M)
-#' singlearm_beta_type1(n_t = 40, M = 0.65, threshold = 0.9, method = "exact")
+#' sat_betabinom_type1(n_t = 40, M = 0.65, threshold = 0.9, method = "exact")
 #'
 #' # Exact Type-I error with p_null < M (frequentist-style)
-#' singlearm_beta_type1(n_t = 40, M = 0.65, threshold = 0.9, method = "exact", p_null = 0.60)
+#' sat_betabinom_type1(n_t = 40, M = 0.65, threshold = 0.9, method = "exact", p_null = 0.60)
 #'
-#' @seealso \code{\link{singlearm_beta_power}}, \code{\link{singlearm_beta_type1_exact}}
+#' @seealso \code{\link{sat_betabinom_power}}, \code{\link{sat_betabinom_type1_exact}}
 #'
 #' @export
-singlearm_beta_type1 <- function(B = 10000, n_t, M, threshold,
-                                 prior = "flat", a_base = 1, b_base = 1,
+sat_betabinom_type1 <- function(B = 10000, n_t, M, threshold,
+                                prior = c("flat", "jeffreys", "beta"),
+                                a_base = 1, b_base = 1,
                                  p_null = NULL,
                                  n_draws = 2000,  # ignored
                                  show_progress = TRUE,
                                  method = c("exact", "simulate")) {
+  prior <- match.arg(prior)
   method <- match.arg(method)
 
   if (method == "simulate") {
-    .Call(`_bcts_singlearm_beta_type1`,
+    .Call(`_bcts_sat_betabinom_type1`,
           B, n_t, M, threshold,
           prior, a_base, b_base, show_progress)
   } else {
     # Default p_null = M if not specified
     if (is.null(p_null)) p_null <- M
 
-    .Call(`_bcts_singlearm_beta_type1_exact`,
+    .Call(`_bcts_sat_betabinom_type1_exact`,
           n_t, M, threshold,
           prior, a_base, b_base, p_null)
   }

@@ -12,7 +12,7 @@ rct_beta_power(
   n_t,
   M = 0,
   threshold,
-  prior = c("flat", "power"),
+  prior = c("flat", "jeffreys", "power"),
   prior_args = list(),
   n_draws = 2000,
   show_progress = TRUE,
@@ -31,13 +31,19 @@ rct_beta_power(
 
 \item{threshold}{Posterior probability cutoff (e.g. 0.9).}
 
-\item{prior}{Character. Prior type: \code{"flat"} or \code{"power"}.}
-
-\item{prior_args}{List with prior hyperparameters. Optional elements:
+\item{prior}{Character. Specifies the prior distribution. Options:
 \itemize{
-\item \code{a0}, \code{y_0}, \code{n_0} for power prior
-\item \code{a_base_c}, \code{b_base_c} for control arm prior
-\item \code{a_base_t}, \code{b_base_t} for treatment arm prior
+\item \code{"flat"}: Flat Beta(1,1) prior for both arms (non-informative),
+\item \code{"jeffreys"}: Jeffreys prior, i.e., Beta(0.5, 0.5) for both arms,
+\item \code{"power"}: Power prior on the control arm, requires specification in \code{prior_args}.
+}}
+
+\item{prior_args}{List of additional prior hyperparameters. Required when \code{prior = "power"}:
+\itemize{
+\item \code{a0}: Discount factor for historical control data (numeric in \verb{[0,1]}),
+\item \code{y_0}, \code{n_0}: Historical control responders and total sample size (integers),
+\item \code{a_base}, \code{b_base}: Baseline Beta parameters (default is \code{1}, \code{1}).
+Ignored when \code{prior} is \code{"flat"} or \code{"jeffreys"}.
 }}
 
 \item{n_draws}{Integer. Number of posterior samples per trial.}

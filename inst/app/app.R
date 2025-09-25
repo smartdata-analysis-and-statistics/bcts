@@ -353,7 +353,7 @@ server <- function(input, output, session) {
     gamma <- input[["crit_sa-gamma_sa"]] / 100
 
     withProgress(message = "Running single-arm simulations...", {
-      power_res <- bcts::singlearm_beta_power(
+      power_res <- bcts::sat_betabinom_power(
         B = B,
         p_t = pt,
         n_t = input$nt_sa,
@@ -367,7 +367,7 @@ server <- function(input, output, session) {
         show_progress = FALSE
       )
 
-      type1_res <- bcts::singlearm_beta_type1(
+      type1_res <- bcts::sat_betabinom_type1(
         B = B,
         n_t = input$nt_sa,
         M = M,

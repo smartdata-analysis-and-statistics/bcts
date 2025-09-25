@@ -8,12 +8,15 @@
 #' @param p_c,p_t True response probabilities in control and treatment (numeric in `[0,1]`).
 #' @param n_c,n_t Sample sizes in control and treatment arms (integers).
 #' @param NI_margin Non-inferiority margin on the risk-difference scale (numeric).
-#' @param prior Character. Either `"flat"` (Beta(1,1) both arms) or `"power"`
-#'   (power prior on control); see `prior_args`.
-#' @param prior_args List of hyperparameters when `prior = "power"`:
-#'   - `a0`: discount factor in `[0,1]`
-#'   - `y_0`, `n_0`: historical control responders and sample size
-#'   - `a_base`, `b_base`: baseline Beta parameters (defaults `1`, `1`)
+#' @param prior Character. Specifies the prior distribution. Options:
+#'   - `"flat"`: Flat Beta(1,1) prior for both arms (non-informative),
+#'   - `"jeffreys"`: Jeffreys prior, i.e., Beta(0.5, 0.5) for both arms,
+#'   - `"power"`: Power prior on the control arm, requires specification in `prior_args`.
+#' @param prior_args List of additional prior hyperparameters. Required when `prior = "power"`:
+#'   - `a0`: Discount factor for historical control data (numeric in `[0,1]`),
+#'   - `y_0`, `n_0`: Historical control responders and total sample size (integers),
+#'   - `a_base`, `b_base`: Baseline Beta parameters (default is `1`, `1`).
+#'   Ignored when `prior` is `"flat"` or `"jeffreys"`.
 #' @param B_cal Number of simulated trials for calibration of `gamma`.
 #' @param B_power Number of simulated trials for power estimation.
 #' @param n_draws Posterior Monte Carlo draws per trial for evaluating `Pr(NI)`.
@@ -39,7 +42,7 @@
 #'   alpha = 0.10, p_c = .85, p_t = .85,
 #'   n_c = 29, n_t = 29, NI_margin = -0.20,
 #'   prior = "flat", B_cal = 1000, B_power = 500,
-#'   method = "cpp
+#'   method = "cpp"
 #' )
 #' res$calibration$gamma
 #' res$power
@@ -50,7 +53,7 @@ rct_beta_calibrate <- function(alpha = 0.10,
                               p_c = 0.85, p_t = 0.85,
                               n_c = 29, n_t = 29,
                               NI_margin = -0.20,
-                              prior = c("flat","power"),
+                              prior = c("flat", "jeffreys", "power"),
                               prior_args = list(),
                               B_cal = 2000, B_power = 1000,
                               n_draws = 2000,
@@ -93,4 +96,70 @@ rct_beta_calibrate <- function(alpha = 0.10,
   )
   class(out) <- "bayesNI"
   out
+}
+
+
+#' Plot calibration trace for calibrated Bayesian NI threshold
+#'
+#' Visualizes the estimated Type-I error at different posterior thresholds
+#' during the calibration procedure.
+#'
+#' @param x Output from [bcts_calibrate_betaBinom_conj()]
+#' @param ... Not used.
+#'
+#' @return A [ggplot2::ggplot()] object.
+#' @export
+#'
+#' @examples
+#' # res <- bcts_calibrate_betaBinom_conj(...)  # Run separately
+#' # plot(res)
+plot.bcts_calibration <- function(x, ...) {
+  stopifnot(!is.null(x$trace), !is.null(x$type1))
+
+  tr     <- x$trace
+  alpha  <- x$alpha
+  gamma  <- x$gamma
+  type1  <- x$type1
+
+  # Small vertical offset above CI
+  offset <- 0.01
+
+  ggplot2::ggplot(tr, ggplot2::aes(x = .data$gamma_try, y = .data$type1)) +
+    ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = .data$ci_lower, ymax = .data$ci_upper),
+      width = 0.002, alpha = 0.4
+    ) +
+    ggplot2::geom_point(size = 2) +
+    ggplot2::geom_line() +
+    ggplot2::geom_point(
+      x = gamma,
+      y = type1["estimate"],
+      color = "blue",
+      size = 3
+    ) +
+    ggplot2::annotate(
+      "text",
+      x = gamma,
+      y = type1["ci_upper"] + offset,
+      label = sprintf("gamma = %.3f\nType-I = %.1f%%",
+                      gamma, 100 * type1["estimate"]),
+      hjust = 0.5,
+      size = 3.5
+    ) +
+    ggplot2::geom_hline(
+      yintercept = alpha,
+      linetype = "dotted",
+      color = "red"
+    ) +
+    ggplot2::labs(
+      x = expression(gamma),
+      y = "Estimated Type-I error",
+      subtitle = sprintf(
+        "Calibrated gamma = %.3f after %d steps; dotted = target alpha = %.2f",
+        gamma, x$iters, alpha
+      )
+    ) +
+    ggplot2::theme_minimal(base_size = 12)+
+    ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1))+
+    ggplot2::scale_x_continuous(labels = scales::label_percent(accuracy = 1))
 }

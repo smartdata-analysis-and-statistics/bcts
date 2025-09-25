@@ -25,8 +25,11 @@ double beta_prob_gt(double a, double b, double M, int n_draws) {
 //' e.g., \code{M = 0.6}.
 //' @param threshold Numeric in \[0, 1\]. Posterior probability cutoff for declaring success,
 //' e.g., \code{0.95}.
-//' @param prior Character string. Either \code{"flat"} for a Beta(1,1) prior or
-//' \code{"beta"} to specify a custom prior using \code{a_base} and \code{b_base}.
+//' @param prior Character string specifying the prior distribution.
+//' Options are:
+//' "flat" for a non-informative Beta(1,1) prior;
+//' "jeffreys" for the Jeffreys prior (Beta(0.5, 0.5));
+//' "beta" for a custom Beta(\code{a_base}, \code{b_base}) prior (user must provide \code{a_base} and \code{b_base}).
 //' @param a_base Numeric. Alpha parameter for the Beta prior (used only if \code{prior = "beta"}).
 //' @param b_base Numeric. Beta parameter for the Beta prior (used only if \code{prior = "beta"}).
 //'
@@ -39,17 +42,17 @@ double beta_prob_gt(double a, double b, double M, int n_draws) {
 //' }
 //'
 //' @examples
-//' singlearm_beta_power_exact(
+//' sat_betabinom_power_exact(
 //'   p_t = 0.75, n_t = 35, M = 0.6,
 //'   threshold = 0.95, prior = "flat"
 //' )
 //'
-//' @seealso \code{\link{singlearm_beta_power}} for the simulation-based version.
+//' @seealso \code{\link{sat_betabinom_power}} for the simulation-based version.
 //'
 //' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 //' @export
 // [[Rcpp::export]]
-List singlearm_beta_power_exact(double p_t,
+List sat_betabinom_power_exact(double p_t,
                                 int n_t,
                                 double M,
                                 double threshold,
@@ -61,8 +64,11 @@ List singlearm_beta_power_exact(double p_t,
   if (prior == "flat") {
     a_base = 1.0;
     b_base = 1.0;
+  } else if (prior == "jeffreys") {
+    a_base = 0.5;
+    b_base = 0.5;
   } else if (prior != "beta") {
-    stop("Invalid prior specification: must be 'flat' or 'beta'");
+    stop("Invalid prior specification: must be 'flat', 'jeffreys', or 'beta'");
   }
 
   double power = 0.0;
@@ -102,8 +108,11 @@ List singlearm_beta_power_exact(double p_t,
 //' @param M Numeric in \[0, 1\]. Decision threshold on the response rate, e.g., \code{M = 0.6}.
 //' @param threshold Numeric in \[0, 1\]. Posterior probability cutoff for declaring success,
 //' e.g., \code{0.95}.
-//' @param prior Character string. Either \code{"flat"} for a Beta(1,1) prior or
-//' \code{"beta"} to specify a custom prior using \code{a_base} and \code{b_base}.
+//' @param prior Character string specifying the prior distribution.
+//' Options are:
+//' "flat" for a non-informative Beta(1,1) prior;
+//' "jeffreys" for the Jeffreys prior (Beta(0.5, 0.5));
+//' "beta" for a custom Beta(\code{a_base}, \code{b_base}) prior (user must provide \code{a_base} and \code{b_base}).
 //' @param a_base Numeric. Alpha parameter for the Beta prior (only used if \code{prior = "beta"}).
 //' @param b_base Numeric. Beta parameter for the Beta prior (only used if \code{prior = "beta"}).
 //' @param show_progress Logical. If \code{TRUE}, prints a simple progress bar to console.
@@ -111,7 +120,7 @@ List singlearm_beta_power_exact(double p_t,
 //' @return A list with: estimate (power), mc_se, successes, B.
 //'
 //' @examples
-//' singlearm_beta_power(
+//' sat_betabinom_power(
 //'   B = 1000, p_t = 0.75, n_t = 35, M = 0.60,
 //'   threshold = 0.95, prior = "flat"
 //' )
@@ -119,7 +128,7 @@ List singlearm_beta_power_exact(double p_t,
 //' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 //' @export
 // [[Rcpp::export]]
-List singlearm_beta_power(int B,
+List sat_betabinom_power(int B,
                           double p_t,
                           int n_t,
                           double M,
@@ -140,6 +149,9 @@ List singlearm_beta_power(int B,
     if (prior == "flat") {
       a_t = 1 + y_t;
       b_t = 1 + (n_t - y_t);
+    } else if (prior == "jeffreys") {
+      a_t = 0.5 + y_t;
+      b_t = 0.5 + (n_t - y_t);
     } else if (prior == "beta") {
       a_t = a_base + y_t;
       b_t = b_base + (n_t - y_t);
@@ -182,7 +194,11 @@ List singlearm_beta_power(int B,
 //' @param n_t Integer. Sample size of the treatment arm.
 //' @param M Numeric. Decision threshold for θ (on probability scale, e.g., 0.6).
 //' @param threshold Posterior probability threshold γ (e.g., 0.95).
-//' @param prior "flat" or "beta".
+//' @param prior Character string specifying the prior distribution.
+//' Options are:
+//' "flat" for a non-informative Beta(1,1) prior;
+//' "jeffreys" for the Jeffreys prior (Beta(0.5, 0.5));
+//' "beta" for a custom Beta(\code{a_base}, \code{b_base}) prior (user must provide \code{a_base} and \code{b_base}).
 //' @param a_base Alpha parameter for Beta prior (if prior = "beta").
 //' @param b_base Beta parameter for Beta prior (if prior = "beta").
 //' @param show_progress Logical. Show progress in console?
@@ -190,7 +206,7 @@ List singlearm_beta_power(int B,
 //' @return A list with \code{estimate} (type-I error), \code{mc_se}, \code{B}, and \code{rejections}.
 //'
 //' @examples
-//' singlearm_beta_type1(
+//' sat_betabinom_type1(
 //'   B = 1000, n_t = 35, M = 0.6,
 //'   threshold = 0.95, prior = "flat"
 //' )
@@ -198,7 +214,7 @@ List singlearm_beta_power(int B,
 //' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 //' @export
 // [[Rcpp::export]]
-List singlearm_beta_type1(int B,
+List sat_betabinom_type1(int B,
                           int n_t,
                           double M,
                           double threshold,
@@ -217,6 +233,9 @@ List singlearm_beta_type1(int B,
     if (prior == "flat") {
       a_t = 1 + y_t;
       b_t = 1 + (n_t - y_t);
+    } else if (prior == "jeffreys") {
+      a_t = 0.5 + y_t;
+      b_t = 0.5 + (n_t - y_t);
     } else if (prior == "beta") {
       a_t = a_base + y_t;
       b_t = b_base + (n_t - y_t);
@@ -263,8 +282,11 @@ List singlearm_beta_type1(int B,
 //' @param M Numeric in \[0, 1\]. Decision threshold on the response rate, e.g., \code{M = 0.6}.
 //' @param threshold Numeric in \[0, 1\]. Posterior probability cutoff for declaring success,
 //' e.g., \code{threshold = 0.95}.
-//' @param prior Character string. Either \code{"flat"} for a Beta(1,1) prior or
-//' \code{"beta"} to specify a custom prior using \code{a_base} and \code{b_base}.
+//' @param prior Character string specifying the prior distribution.
+//' Options are:
+//' "flat" for a non-informative Beta(1,1) prior;
+//' "jeffreys" for the Jeffreys prior (Beta(0.5, 0.5));
+//' "beta" for a custom Beta(\code{a_base}, \code{b_base}) prior (user must provide \code{a_base} and \code{b_base})..
 //' @param a_base Numeric. Alpha parameter for the Beta prior (only used if \code{prior = "beta"}).
 //' @param b_base Numeric. Beta parameter for the Beta prior (only used if \code{prior = "beta"}).
 //' @param p_null Optional. True response probability under the null hypothesis (e.g., \code{p_null = 0.6}).
@@ -280,18 +302,18 @@ List singlearm_beta_type1(int B,
 //'
 //' @examples
 //' # Type-I error under flat prior at boundary
-//' singlearm_beta_type1_exact(n_t = 40, M = 0.65, threshold = 0.9, prior = "flat")
+//' sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9, prior = "flat")
 //'
 //' # Type-I error under true p < M (frequentist view)
-//' singlearm_beta_type1_exact(n_t = 40, M = 0.65, threshold = 0.9,
+//' sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9,
 //'                            prior = "flat", p_null = 0.60)
 //'
-//' @seealso \code{\link{singlearm_beta_type1}} for the simulation-based version.
+//' @seealso \code{\link{sat_betabinom_type1}} for the simulation-based version.
 //'
 //' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 //' @export
 // [[Rcpp::export]]
-List singlearm_beta_type1_exact(int n_t,
+List sat_betabinom_type1_exact(int n_t,
                                 double M,
                                 double threshold,
                                 std::string prior = "flat",
@@ -302,6 +324,9 @@ List singlearm_beta_type1_exact(int n_t,
   if (prior == "flat") {
     a_base = 1.0;
     b_base = 1.0;
+  } else if (prior == "jeffreys") {
+    a_base = 0.5;
+    b_base = 0.5;
   } else if (prior != "beta") {
     stop("Invalid prior specification: must be 'flat' or 'beta'");
   }
