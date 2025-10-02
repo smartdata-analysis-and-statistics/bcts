@@ -38,6 +38,7 @@
 #'   method = "cpp", show_progress = FALSE
 #' )
 #'
+#' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 #' @export
 rct_beta_power <- function(B = 10000,
                            p_c, p_t, n_c, n_t,

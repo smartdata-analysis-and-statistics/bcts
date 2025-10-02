@@ -127,13 +127,18 @@ mod_singlearm_server <- function(id) {
         show_progress = FALSE
       )
 
-      # Frequentist power
-      crit_val <- qbinom(gamma, size = nt, prob = M) + 1
-      freq_power <- 1 - pbinom(crit_val - 1, size = nt, prob = pt)
+      # Optional frequentist comparison
+      freq_power <- freq_type1 <- NA
+      decision_mode <- input[["crit_sa-decision_mode_sa"]]
 
-
-      # Frequentist type-I error
-      freq_type1 <- 1 - gamma
+      if (!is.null(decision_mode) && decision_mode == "alpha") {
+        alpha <- input[["crit_sa-alpha_sa"]] / 100  # slider is in percent
+        if (!is.null(alpha)) {
+          crit_val <- qbinom(1 - alpha, size = nt, prob = M)
+          freq_power <- 1 - pbinom(crit_val - 1, size = nt, prob = pt)
+          freq_type1 <- 1 - pbinom(crit_val - 1, size = nt, prob = M)
+        }
+      }
 
       list(
         power = power_res,
@@ -207,11 +212,11 @@ mod_singlearm_server <- function(id) {
       cat(sprintf("Estimated power: %.2f%%\n", 100 * power_res$estimate))
       cat(sprintf("Estimated Type-I error: %.2f%%\n", 100 * type1_res$estimate))
 
-      cat("\n")
-
-      cat("FREQUENTIST COMPARISON\n")
-      cat(sprintf("Frequentist power: %.2f%%\n", 100 * freq_power))
-      cat(sprintf("Frequentist Type-I error: %.2f%%\n", 100 * freq_type1))
+      if (!is.na(res$freq_power) && !is.na(res$freq_type1)) {
+        cat("\nFREQUENTIST COMPARISON\n")
+        cat(sprintf("Frequentist power: %.2f%%\n", 100 * res$freq_power))
+        cat(sprintf("Frequentist Type-I error: %.2f%%\n", 100 * res$freq_type1))
+      }
     })
 
     output$freq_binom_plot <- renderPlot({

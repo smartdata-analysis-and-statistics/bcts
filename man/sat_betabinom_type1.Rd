@@ -9,11 +9,10 @@ sat_betabinom_type1(
   n_t,
   M,
   threshold,
-  prior = c("flat", "jeffreys", "beta"),
+  prior = c("beta", "flat", "jeffreys"),
   a_base = 1,
   b_base = 1,
   p_null = NULL,
-  n_draws = 2000,
   show_progress = TRUE,
   method = c("exact", "simulate")
 )
@@ -23,11 +22,10 @@ sat_betabinom_type1(
   n_t,
   M,
   threshold,
-  prior = c("flat", "jeffreys", "beta"),
+  prior = c("beta", "flat", "jeffreys"),
   a_base = 1,
   b_base = 1,
   p_null = NULL,
-  n_draws = 2000,
   show_progress = TRUE,
   method = c("exact", "simulate")
 )
@@ -43,9 +41,9 @@ sat_betabinom_type1(
 
 \item{prior}{Prior type: one of:
 \itemize{
+\item \code{"beta"} (default) Use custom Beta(\code{a_base}, \code{b_base}) prior..
 \item \code{"flat"} for a non-informative Beta(1,1) prior;
 \item \code{"jeffreys"} for the Jeffreys prior Beta(0.5, 0.5);
-\item \code{"beta"} for a custom Beta(\code{a_base}, \code{b_base}) prior.
 }}
 
 \item{a_base}{Alpha of Beta prior (only used if \code{prior = "beta"}).}
@@ -54,8 +52,6 @@ sat_betabinom_type1(
 
 \item{p_null}{Optional numeric. True response rate under the null hypothesis (default is \code{M}).
 Only used when \code{method = "exact"}.}
-
-\item{n_draws}{Ignored. Kept for backward compatibility.}
 
 \item{show_progress}{Logical. Show progress bar during simulation (only relevant for \code{method = "simulate"}).}
 

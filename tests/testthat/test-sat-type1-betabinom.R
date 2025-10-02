@@ -3,7 +3,6 @@ test_that("Analytic and simulated Type-I error are consistent for single-arm Bet
   n_t       <- 35
   M         <- 0.6
   threshold <- 0.90
-  prior     <- "flat"
   a_base    <- 1
   b_base    <- 1
   p_null    <- M     # Evaluate at the boundary
@@ -12,7 +11,7 @@ test_that("Analytic and simulated Type-I error are consistent for single-arm Bet
   exact_res <- .Call(
     `_bcts_sat_betabinom_type1_exact`,
     n_t, M, threshold,
-    prior, a_base, b_base, p_null
+    a_base, b_base, p_null
   )
   exact_type1 <- exact_res$estimate
 
@@ -22,7 +21,7 @@ test_that("Analytic and simulated Type-I error are consistent for single-arm Bet
     `_bcts_sat_betabinom_type1`,
     50000,      # B
     n_t, M, threshold,
-    prior, a_base, b_base,
+    a_base, b_base,
     FALSE       # show_progress
   )
   sim_type1 <- sim_res$estimate

@@ -29,6 +29,7 @@
 #'   p_t = 0.75, n_t = 35, M = 0.60,
 #'   threshold = 0.95, prior = "flat", method = "exact"
 #' )
+#' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 #'
 #' @export
 sat_betabinom_power <- function(B = 10000, p_t, n_t, M, threshold,

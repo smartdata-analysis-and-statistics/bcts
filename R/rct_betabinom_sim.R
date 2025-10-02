@@ -38,6 +38,7 @@
 #' )
 #' res$estimate
 #' res$ci
+#' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 #' @export
 bcts_power_betaBinom_conj <- function(B = 1000, p_c, p_t, n_c, n_t, M,
                                          threshold,

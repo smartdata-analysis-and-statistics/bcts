@@ -82,37 +82,36 @@ BEGIN_RCPP
 END_RCPP
 }
 // sat_betabinom_type1
-List sat_betabinom_type1(int B, int n_t, double M, double threshold, std::string prior, double a_base, double b_base, bool show_progress);
-RcppExport SEXP _bcts_sat_betabinom_type1(SEXP BSEXP, SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP priorSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP, SEXP show_progressSEXP) {
+List sat_betabinom_type1(int B, int n_t, double p_null, double M, double threshold, double a_base, double b_base, bool show_progress);
+RcppExport SEXP _bcts_sat_betabinom_type1(SEXP BSEXP, SEXP n_tSEXP, SEXP p_nullSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< int >::type B(BSEXP);
     Rcpp::traits::input_parameter< int >::type n_t(n_tSEXP);
+    Rcpp::traits::input_parameter< double >::type p_null(p_nullSEXP);
     Rcpp::traits::input_parameter< double >::type M(MSEXP);
     Rcpp::traits::input_parameter< double >::type threshold(thresholdSEXP);
-    Rcpp::traits::input_parameter< std::string >::type prior(priorSEXP);
     Rcpp::traits::input_parameter< double >::type a_base(a_baseSEXP);
     Rcpp::traits::input_parameter< double >::type b_base(b_baseSEXP);
     Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
-    rcpp_result_gen = Rcpp::wrap(sat_betabinom_type1(B, n_t, M, threshold, prior, a_base, b_base, show_progress));
+    rcpp_result_gen = Rcpp::wrap(sat_betabinom_type1(B, n_t, p_null, M, threshold, a_base, b_base, show_progress));
     return rcpp_result_gen;
 END_RCPP
 }
 // sat_betabinom_type1_exact
-List sat_betabinom_type1_exact(int n_t, double M, double threshold, std::string prior, double a_base, double b_base, double p_null);
-RcppExport SEXP _bcts_sat_betabinom_type1_exact(SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP priorSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP, SEXP p_nullSEXP) {
+List sat_betabinom_type1_exact(int n_t, double M, double threshold, double a_base, double b_base, double p_null);
+RcppExport SEXP _bcts_sat_betabinom_type1_exact(SEXP n_tSEXP, SEXP MSEXP, SEXP thresholdSEXP, SEXP a_baseSEXP, SEXP b_baseSEXP, SEXP p_nullSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< int >::type n_t(n_tSEXP);
     Rcpp::traits::input_parameter< double >::type M(MSEXP);
     Rcpp::traits::input_parameter< double >::type threshold(thresholdSEXP);
-    Rcpp::traits::input_parameter< std::string >::type prior(priorSEXP);
     Rcpp::traits::input_parameter< double >::type a_base(a_baseSEXP);
     Rcpp::traits::input_parameter< double >::type b_base(b_baseSEXP);
     Rcpp::traits::input_parameter< double >::type p_null(p_nullSEXP);
-    rcpp_result_gen = Rcpp::wrap(sat_betabinom_type1_exact(n_t, M, threshold, prior, a_base, b_base, p_null));
+    rcpp_result_gen = Rcpp::wrap(sat_betabinom_type1_exact(n_t, M, threshold, a_base, b_base, p_null));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -123,7 +122,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_bcts_sat_betabinom_power_exact", (DL_FUNC) &_bcts_sat_betabinom_power_exact, 7},
     {"_bcts_sat_betabinom_power", (DL_FUNC) &_bcts_sat_betabinom_power, 9},
     {"_bcts_sat_betabinom_type1", (DL_FUNC) &_bcts_sat_betabinom_type1, 8},
-    {"_bcts_sat_betabinom_type1_exact", (DL_FUNC) &_bcts_sat_betabinom_type1_exact, 7},
+    {"_bcts_sat_betabinom_type1_exact", (DL_FUNC) &_bcts_sat_betabinom_type1_exact, 6},
     {NULL, NULL, 0}
 };
 

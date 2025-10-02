@@ -80,3 +80,6 @@ res <- bcts_power_betaBinom_conj(
 res$estimate
 res$ci
 }
+\author{
+Thomas Debray \email{tdebray@fromdatatowisdom.com}
+}

@@ -192,15 +192,11 @@ List sat_betabinom_power(int B,
 //'
 //' @param B Integer. Number of simulations.
 //' @param n_t Integer. Sample size of the treatment arm.
+//' @param p_null True response probability under H₀. Used to simulate Binomial outcomes.
 //' @param M Numeric. Decision threshold for θ (on probability scale, e.g., 0.6).
 //' @param threshold Posterior probability threshold γ (e.g., 0.95).
-//' @param prior Character string specifying the prior distribution.
-//' Options are:
-//' "flat" for a non-informative Beta(1,1) prior;
-//' "jeffreys" for the Jeffreys prior (Beta(0.5, 0.5));
-//' "beta" for a custom Beta(\code{a_base}, \code{b_base}) prior (user must provide \code{a_base} and \code{b_base}).
-//' @param a_base Alpha parameter for Beta prior (if prior = "beta").
-//' @param b_base Beta parameter for Beta prior (if prior = "beta").
+//' @param a_base Alpha parameter for Beta prior.
+//' @param b_base Beta parameter for Beta prior.
 //' @param show_progress Logical. Show progress in console?
 //'
 //' @return A list with \code{estimate} (type-I error), \code{mc_se}, \code{B}, and \code{rejections}.
@@ -215,39 +211,29 @@ List sat_betabinom_power(int B,
 //' @export
 // [[Rcpp::export]]
 List sat_betabinom_type1(int B,
-                          int n_t,
-                          double M,
-                          double threshold,
-                          std::string prior = "flat",
-                          double a_base = 1,
-                          double b_base = 1,
-                          bool show_progress = true) {
+                         int n_t,
+                         double p_null,        // True prob under null (simulate y ~ Bin(n_t, p_null))
+                         double M,             // Decision margin (used in Pr(θ > M))
+                         double threshold,     // Decision threshold for Pr(θ > M)
+                         double a_base = 1,
+                         double b_base = 1,
+                         bool show_progress = true) {
 
   int rejections = 0;
 
   for (int b = 0; b < B; ++b) {
-    // Simulate response under null hypothesis: p_null = M
-    int y_t = R::rbinom(n_t, M);
+    // Simulate data under H₀: θ = p_null
+    int y = R::rbinom(n_t, p_null);
 
-    double a_t, b_t;
-    if (prior == "flat") {
-      a_t = 1 + y_t;
-      b_t = 1 + (n_t - y_t);
-    } else if (prior == "jeffreys") {
-      a_t = 0.5 + y_t;
-      b_t = 0.5 + (n_t - y_t);
-    } else if (prior == "beta") {
-      a_t = a_base + y_t;
-      b_t = b_base + (n_t - y_t);
-    } else {
-      stop("Invalid prior specification: must be 'flat' or 'beta'");
-    }
+    // Compute posterior shape
+    double a_post = a_base + y;
+    double b_post = b_base + (n_t - y);
 
-    //NumericVector draws = Rcpp::rbeta(n_draws, a_t, b_t);
-    //double prob = mean(draws > M);
-    double prob = 1.0 - R::pbeta(M, a_t, b_t, /*lower_tail=*/1, /*log_p=*/0);
+    // Posterior tail probability Pr(θ > M)
+    double pr_theta_gt_M = 1.0 - R::pbeta(M, a_post, b_post, 1, 0);
 
-    if (prob >= threshold) {
+    // Check if posterior tail exceeds threshold (γ)
+    if (pr_theta_gt_M >= threshold) {
       rejections++;
     }
 
@@ -282,13 +268,8 @@ List sat_betabinom_type1(int B,
 //' @param M Numeric in \[0, 1\]. Decision threshold on the response rate, e.g., \code{M = 0.6}.
 //' @param threshold Numeric in \[0, 1\]. Posterior probability cutoff for declaring success,
 //' e.g., \code{threshold = 0.95}.
-//' @param prior Character string specifying the prior distribution.
-//' Options are:
-//' "flat" for a non-informative Beta(1,1) prior;
-//' "jeffreys" for the Jeffreys prior (Beta(0.5, 0.5));
-//' "beta" for a custom Beta(\code{a_base}, \code{b_base}) prior (user must provide \code{a_base} and \code{b_base})..
-//' @param a_base Numeric. Alpha parameter for the Beta prior (only used if \code{prior = "beta"}).
-//' @param b_base Numeric. Beta parameter for the Beta prior (only used if \code{prior = "beta"}).
+//' @param a_base Numeric. Alpha parameter for the Beta prior.
+//' @param b_base Numeric. Beta parameter for the Beta prior.
 //' @param p_null Optional. True response probability under the null hypothesis (e.g., \code{p_null = 0.6}).
 //' If not specified, defaults to \code{p_null = M} (boundary case).
 //'
@@ -296,17 +277,12 @@ List sat_betabinom_type1(int B,
 //' \describe{
 //'   \item{\code{estimate}}{Exact Type-I error (a number between 0 and 1).}
 //'   \item{\code{mc_se}}{\code{NA_real_}, included for compatibility.}
-//'   \item{\code{B}}{\code{NA_integer_}, included for compatibility.}
+//'   \item{\code{B}}{\code{NA_real_}, included for compatibility.}
 //'   \item{\code{rejections}}{\code{NA_integer_}, included for compatibility.}
 //' }
 //'
 //' @examples
-//' # Type-I error under flat prior at boundary
-//' sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9, prior = "flat")
-//'
-//' # Type-I error under true p < M (frequentist view)
-//' sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9,
-//'                            prior = "flat", p_null = 0.60)
+//' sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9)
 //'
 //' @seealso \code{\link{sat_betabinom_type1}} for the simulation-based version.
 //'
@@ -316,20 +292,10 @@ List sat_betabinom_type1(int B,
 List sat_betabinom_type1_exact(int n_t,
                                 double M,
                                 double threshold,
-                                std::string prior = "flat",
                                 double a_base = 1,
                                 double b_base = 1,
                                 double p_null = -1.0  // default to M if not provided
 ) {
-  if (prior == "flat") {
-    a_base = 1.0;
-    b_base = 1.0;
-  } else if (prior == "jeffreys") {
-    a_base = 0.5;
-    b_base = 0.5;
-  } else if (prior != "beta") {
-    stop("Invalid prior specification: must be 'flat' or 'beta'");
-  }
 
   // Default: p_null = M if not specified
   if (p_null < 0.0) {
@@ -356,7 +322,7 @@ List sat_betabinom_type1_exact(int n_t,
   return List::create(
     Named("estimate") = type1,
     Named("mc_se") = R_NaReal,
-    Named("B") = NA_INTEGER,
+    Named("B") = R_NaReal,
     Named("rejections") = NA_INTEGER
   );
 }

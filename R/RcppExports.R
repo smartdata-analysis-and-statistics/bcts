@@ -153,15 +153,11 @@ sat_betabinom_power <- function(B, p_t, n_t, M, threshold, prior = "flat", a_bas
 #'
 #' @param B Integer. Number of simulations.
 #' @param n_t Integer. Sample size of the treatment arm.
+#' @param p_null True response probability under H₀. Used to simulate Binomial outcomes.
 #' @param M Numeric. Decision threshold for θ (on probability scale, e.g., 0.6).
 #' @param threshold Posterior probability threshold γ (e.g., 0.95).
-#' @param prior Character string specifying the prior distribution.
-#' Options are:
-#' "flat" for a non-informative Beta(1,1) prior;
-#' "jeffreys" for the Jeffreys prior (Beta(0.5, 0.5));
-#' "beta" for a custom Beta(\code{a_base}, \code{b_base}) prior (user must provide \code{a_base} and \code{b_base}).
-#' @param a_base Alpha parameter for Beta prior (if prior = "beta").
-#' @param b_base Beta parameter for Beta prior (if prior = "beta").
+#' @param a_base Alpha parameter for Beta prior.
+#' @param b_base Beta parameter for Beta prior.
 #' @param show_progress Logical. Show progress in console?
 #'
 #' @return A list with \code{estimate} (type-I error), \code{mc_se}, \code{B}, and \code{rejections}.
@@ -174,8 +170,8 @@ sat_betabinom_power <- function(B, p_t, n_t, M, threshold, prior = "flat", a_bas
 #'
 #' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 #' @export
-sat_betabinom_type1 <- function(B, n_t, M, threshold, prior = "flat", a_base = 1, b_base = 1, show_progress = TRUE) {
-    .Call(`_bcts_sat_betabinom_type1`, B, n_t, M, threshold, prior, a_base, b_base, show_progress)
+sat_betabinom_type1 <- function(B, n_t, p_null, M, threshold, a_base = 1, b_base = 1, show_progress = TRUE) {
+    .Call(`_bcts_sat_betabinom_type1`, B, n_t, p_null, M, threshold, a_base, b_base, show_progress)
 }
 
 #' @title Exact Type-I Error for Single-Arm Trial (Beta-Binomial)
@@ -192,13 +188,8 @@ sat_betabinom_type1 <- function(B, n_t, M, threshold, prior = "flat", a_base = 1
 #' @param M Numeric in \[0, 1\]. Decision threshold on the response rate, e.g., \code{M = 0.6}.
 #' @param threshold Numeric in \[0, 1\]. Posterior probability cutoff for declaring success,
 #' e.g., \code{threshold = 0.95}.
-#' @param prior Character string specifying the prior distribution.
-#' Options are:
-#' "flat" for a non-informative Beta(1,1) prior;
-#' "jeffreys" for the Jeffreys prior (Beta(0.5, 0.5));
-#' "beta" for a custom Beta(\code{a_base}, \code{b_base}) prior (user must provide \code{a_base} and \code{b_base})..
-#' @param a_base Numeric. Alpha parameter for the Beta prior (only used if \code{prior = "beta"}).
-#' @param b_base Numeric. Beta parameter for the Beta prior (only used if \code{prior = "beta"}).
+#' @param a_base Numeric. Alpha parameter for the Beta prior.
+#' @param b_base Numeric. Beta parameter for the Beta prior.
 #' @param p_null Optional. True response probability under the null hypothesis (e.g., \code{p_null = 0.6}).
 #' If not specified, defaults to \code{p_null = M} (boundary case).
 #'
@@ -206,23 +197,18 @@ sat_betabinom_type1 <- function(B, n_t, M, threshold, prior = "flat", a_base = 1
 #' \describe{
 #'   \item{\code{estimate}}{Exact Type-I error (a number between 0 and 1).}
 #'   \item{\code{mc_se}}{\code{NA_real_}, included for compatibility.}
-#'   \item{\code{B}}{\code{NA_integer_}, included for compatibility.}
+#'   \item{\code{B}}{\code{NA_real_}, included for compatibility.}
 #'   \item{\code{rejections}}{\code{NA_integer_}, included for compatibility.}
 #' }
 #'
 #' @examples
-#' # Type-I error under flat prior at boundary
-#' sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9, prior = "flat")
-#'
-#' # Type-I error under true p < M (frequentist view)
-#' sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9,
-#'                            prior = "flat", p_null = 0.60)
+#' sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9)
 #'
 #' @seealso \code{\link{sat_betabinom_type1}} for the simulation-based version.
 #'
 #' @author Thomas Debray \email{tdebray@fromdatatowisdom.com}
 #' @export
-sat_betabinom_type1_exact <- function(n_t, M, threshold, prior = "flat", a_base = 1, b_base = 1, p_null = -1.0) {
-    .Call(`_bcts_sat_betabinom_type1_exact`, n_t, M, threshold, prior, a_base, b_base, p_null)
+sat_betabinom_type1_exact <- function(n_t, M, threshold, a_base = 1, b_base = 1, p_null = -1.0) {
+    .Call(`_bcts_sat_betabinom_type1_exact`, n_t, M, threshold, a_base, b_base, p_null)
 }
 

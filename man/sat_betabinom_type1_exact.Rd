@@ -8,7 +8,6 @@ sat_betabinom_type1_exact(
   n_t,
   M,
   threshold,
-  prior = "flat",
   a_base = 1,
   b_base = 1,
   p_null = -1
@@ -22,15 +21,9 @@ sat_betabinom_type1_exact(
 \item{threshold}{Numeric in [0, 1]. Posterior probability cutoff for declaring success,
 e.g., \code{threshold = 0.95}.}
 
-\item{prior}{Character string specifying the prior distribution.
-Options are:
-"flat" for a non-informative Beta(1,1) prior;
-"jeffreys" for the Jeffreys prior (Beta(0.5, 0.5));
-"beta" for a custom Beta(\code{a_base}, \code{b_base}) prior (user must provide \code{a_base} and \code{b_base})..}
+\item{a_base}{Numeric. Alpha parameter for the Beta prior.}
 
-\item{a_base}{Numeric. Alpha parameter for the Beta prior (only used if \code{prior = "beta"}).}
-
-\item{b_base}{Numeric. Beta parameter for the Beta prior (only used if \code{prior = "beta"}).}
+\item{b_base}{Numeric. Beta parameter for the Beta prior.}
 
 \item{p_null}{Optional. True response probability under the null hypothesis (e.g., \code{p_null = 0.6}).
 If not specified, defaults to \code{p_null = M} (boundary case).}
@@ -40,7 +33,7 @@ A named list with:
 \describe{
 \item{\code{estimate}}{Exact Type-I error (a number between 0 and 1).}
 \item{\code{mc_se}}{\code{NA_real_}, included for compatibility.}
-\item{\code{B}}{\code{NA_integer_}, included for compatibility.}
+\item{\code{B}}{\code{NA_real_}, included for compatibility.}
 \item{\code{rejections}}{\code{NA_integer_}, included for compatibility.}
 }
 }
@@ -54,12 +47,7 @@ By default, the null hypothesis is \eqn{\theta = M}, but a more conservative
 frequentist setting can be evaluated by setting \code{p_null < M}.
 }
 \examples{
-# Type-I error under flat prior at boundary
-sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9, prior = "flat")
-
-# Type-I error under true p < M (frequentist view)
-sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9,
-                           prior = "flat", p_null = 0.60)
+sat_betabinom_type1_exact(n_t = 40, M = 0.65, threshold = 0.9)
 
 }
 \seealso{
